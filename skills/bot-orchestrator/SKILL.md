@@ -1,9 +1,9 @@
 ---
 name: bot-orchestrator
-description: Orchestrate multi-step agent work that needs tool coordination, deliverable review, waiting, or recovery. Keep one goal moving toward verifiable results through a single agent or authorized collaborators. Not intended for simple questions.
+description: Orchestrate multi-step agent work that needs dependency planning, MOA collaboration, tool coordination, repeated verification, waiting, or recovery. Keep one goal moving toward verifiable results through a single agent or authorized collaborators. Not intended for simple questions.
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Bot Orchestrator
@@ -33,9 +33,13 @@ Record:
 
 Make acceptance behavioral. For example, require two input cases to export successfully and read back correctly, rather than requiring a feature to be improved. Keep technical verification separate from user-level outcomes when they differ.
 
+Map each required acceptance criterion to an accessible input, a real execution path, and a check or accountable review. Exercise the smallest representative slice when an interface is uncertain before expanding dependent work. Record the missing condition if a required path is unavailable; advance independent work.
+
 Check only the host capabilities the task needs. Tool presence, authenticated access, and permission for this action are separate facts. Read [host capabilities](references/capabilities.md) when execution reaches accounts, external actions, workers, or scheduling.
 
 ## 2. Build a reviewable dependency graph
+
+Choose direct execution, sequential work, a dependency graph, MOA, targeted review, or waiting according to the actual output. Read [orchestration decisions](references/orchestration.md) for feasibility, scheduling, integration, and deliverability gates.
 
 Each task needs an ID, objective, input references, deliverable, acceptance condition, dependencies, owner, and write scope. See [execution and collaboration](references/execution.md).
 
@@ -45,6 +49,8 @@ Each task needs an ID, objective, input references, deliverable, acceptance cond
 - Add workers only when a real capability or useful independent boundary justifies them. If delegation is prohibited or unavailable, execute the same cards yourself.
 - Give shared files one writer. Other participants return changes for that writer to integrate.
 
+Use [MOA collaboration](references/moa.md) when independent proposals and cross-review improve the same bounded deliverable. Complete proposal, critique, synthesis, and repeated verification through actual host tools or the optional command-adapter driver. Use distinct methods, retain conflicts, and check one integrated version. The driver executes declared commands only when explicitly invoked; the included offline example uses deterministic programs and makes no model calls.
+
 Prefer the host's existing persistent task store. If none is suitable, the included [local board](references/board.md) can record this workflow. It requires Python 3.9+ and only the standard library. It never executes commands, starts agents, sends messages, or schedules work.
 
 ## 3. Execute the next actionable task
@@ -52,7 +58,7 @@ Prefer the host's existing persistent task store. If none is suitable, the inclu
 Repeat:
 
 1. Read the current contract and latest state. Confirm that inputs, authorization, and accepted dependencies are still valid.
-2. Select work whose full dependency chain is accepted at its current evidence version and whose resources do not conflict. With the included board, use `next` for a read-only readiness and blocker report; a ready list is a snapshot, not a batch reservation. Park a task missing a condition while advancing independent work.
+2. Select work whose full dependency chain is accepted at its current evidence version and whose resources do not conflict. With the included board, use `next` for a read-only readiness and blocker report; its ranked ready list and disjoint recommended batch are advisory snapshots; each start rechecks the actual conditions. Park a task missing a condition while advancing independent work.
 3. Execute directly, or dispatch through a real, available, authorized collaboration interface. Send task-specific facts and references rather than a transcript dump.
 4. Record the actual operation, relevant input version, returned handle, output location, and observed result. A process start is separate from completion.
 5. Inspect the deliverable and its evidence. Accept it only when the relevant conditions pass; otherwise return a precise correction.
@@ -68,7 +74,7 @@ Read the output and inspect key evidence against the current version. A worker's
 
 Choose meaningful checks: sources and omissions for documents, behavior and relevant regressions for code, read-back and destination for files, actual destination and service receipt for external effects. Distinguish self-review from independent review. Do not invent a second reviewer.
 
-Rework must state the unmet condition, observed difference, location, and verification needed. Avoid vague requests to improve everything. Recheck affected work; expand verification when a change or failure provides a reason.
+Rework must state the unmet condition, observed difference, location, and verification needed. Avoid vague requests to improve everything. Recheck affected work; expand verification when a change or failure provides a reason. When repeated verification is required, predeclare the criteria and repetitions, pin one candidate, and retain every result. A failed unchanged candidate needs a changed condition or revision before further attempts. A failed later recheck remains evidence requiring resolution.
 
 ## 5. Handle failure, waiting, and recovery
 

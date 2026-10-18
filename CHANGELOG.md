@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.0 — 2026-10-19
+
+- Add explicit orchestration decisions for feasibility, pattern selection, required-work prioritization, integration, and final delivery.
+- Add an opt-in MOA command driver with proposal, optional cross-review, synthesis, and repeated-verification stages; explicit criterion coverage, concurrency, call/round budgets, timeouts, and bounded streams.
+- Add correction feedback and failed-candidate digest tracking. Unchanged or oscillating failed versions stop with `NO_PROGRESS` instead of retrying until a favorable check.
+- Add verifier-only rechecks of accepted candidates and read-only audits of source/artifact hashes, actual stage receipts, criterion coverage, and every required repetition.
+- Checkpoint actual process IDs, arguments, exit codes, timing, and request/stdout/stderr evidence. Stop owned POSIX process groups on timeout or output overflow.
+- Rank ready board cards by reachable unfinished required work and recommend a disjoint advisory batch through `next --limit`; existing board schema remains version 1.
+- Include a runnable offline MOA example with source calculations, cross-review, deliberately failed synthesis, repair, repeated checking, and a separate recheck. It reports zero model calls.
+- Add repeatable repository validation with raw logs, actual exit codes, a fixed-source fingerprint, and fail-fast behavior.
+
+The board remains record-only. Model backends, real host-agent integration, meaningful domain checks, and final external delivery remain caller/host responsibilities.
+
 ## 1.1.0 — 2026-10-19
 
 - Validate the full accepted ancestor chain before downstream start, submission, acceptance, and resume. Changed ancestor review evidence now blocks those transitions too.

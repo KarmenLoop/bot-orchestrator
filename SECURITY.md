@@ -16,6 +16,8 @@ No private reporting feature or response-time commitment is assumed merely becau
 - A reminder timestamp does not create a scheduled job.
 - The skill does not grant permission to use accounts, send messages, spend money, publish content, or change operating-system permissions.
 
+The optional MOA driver executes declared commands with inherited host permissions and environment. Inspect specs before execution, keep secrets out of argv and captured outputs, and use synchronous bounded adapters. Owned POSIX process-group cleanup does not cancel remote effects or supervise detached services.
+
 Use host-native isolation, account protection, approval controls, and execution limits where required.
 
 ## Safe reproductions

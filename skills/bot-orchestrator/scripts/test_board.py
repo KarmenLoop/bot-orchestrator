@@ -201,6 +201,23 @@ class BoardTests(unittest.TestCase):
         self.call('start', 'q999')
         self.assertEqual(self.call('status', '--full')['tasks']['q999']['status'], 'running')
 
+    def test_next_ranks_required_consumers_and_selects_disjoint_batch(self):
+        self.add('small', '--write', 'shared')
+        self.add('critical', '--write', 'shared/result')
+        self.add('dependent', '--depends', 'critical')
+        self.add('final', '--depends', 'dependent')
+        self.add('independent', '--write', 'other')
+        before = self.call('status', '--full')
+        result = self.call('next', '--limit', '2')
+        self.assertEqual(result['rankedReady'][0], 'critical')
+        self.assertEqual(result['recommendedBatch'], ['critical', 'independent'])
+        self.assertEqual(self.call('status', '--full'), before)
+
+    def test_next_rejects_invalid_batch_limit_without_state_change(self):
+        self.add('a'); before = self.call('status', '--full')
+        self.call('next', '--limit', '0', code=2, error='INVALID_LIMIT')
+        self.assertEqual(self.call('status', '--full'), before)
+
     def test_next_closed_board_has_no_dispatch_and_recommends_inspection(self):
         self.add('a'); self.finish('a'); self.save('final.txt')
         self.call('close', '--evidence', 'final.txt', '--reason', 'Checked')

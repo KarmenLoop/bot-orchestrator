@@ -73,6 +73,7 @@ Cancel or settle real execution first. Cancelling an upstream task blocks its de
 
 ```text
 board next
+board next --limit 3
 board next --now 2026-10-20T01:00:00Z
 ```
 
@@ -81,13 +82,16 @@ board next --now 2026-10-20T01:00:00Z
 | Field | Interpretation |
 | --- | --- |
 | ready | Pending task IDs that pass current dependency evidence, attempt budget, and declared write-conflict checks. |
+| rankedReady | Ready candidates ordered by reachable unfinished required cards, including themselves; ties preserve insertion order. |
+| requiredWorkReachable | The count behind each ready candidate's advisory ranking. |
+| recommendedBatch | Up to `--limit` candidates with nonoverlapping declared write scopes; default 2, maximum 16. |
 | blocked | Pending or explicitly blocked tasks, with the first blocking code and reason. |
 | inFlight | Running and review records to inspect through the host; these are not liveness checks. |
 | waiting | Wait reasons, optional timestamps, and whether a timestamp is due at the supplied or current time. |
 | evidenceIssues | Changed or missing current submission, accepted review, or closure files. |
 | goalAction | Continue, inspect changed evidence, review goal acceptance, or inspect an already closed goal. |
 
-The ready list is a snapshot, not a reservation. Two pending tasks can both be ready yet share the same write scope: starting one will block the other. Every `start` rechecks under its own write transaction. File hashes are cached only within the current inspection; later commands read files again.
+The ready list and recommended batch are snapshots, not reservations. Ranking supplies no duration, urgency, cost, or external-resource estimate; apply coordinator judgment from the actual goal. Two pending tasks can both be ready yet share the same write scope: starting one will block the other. Every `start` rechecks under its own write transaction. File hashes are cached only within the current inspection; later commands read files again.
 
 A blocker is diagnostic; this query does not change a task to blocked or clear a wait. An unrelated stale artifact does not automatically stop independent ready work. `review_goal_acceptance` is a prompt to inspect the original contract, not permission to close a goal or a guarantee that required work passed.
 

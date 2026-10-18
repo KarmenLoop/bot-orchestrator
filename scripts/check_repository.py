@@ -15,7 +15,11 @@ def main():
                 'SECURITY.md', 'SUPPORT.md', 'CODE_OF_CONDUCT.md', 'CHANGELOG.md',
                 'skills/bot-orchestrator/SKILL.md', 'skills/bot-orchestrator/LICENSE',
                 'skills/bot-orchestrator/agents/openai.yaml', 'examples/local_demo.py',
-                'skills/bot-orchestrator/scripts/demo.py', 'scripts/test_repository.py']
+                'skills/bot-orchestrator/scripts/demo.py', 'scripts/test_repository.py', 'scripts/validate.py',
+                'skills/bot-orchestrator/scripts/moa.py', 'skills/bot-orchestrator/scripts/test_moa.py',
+                'skills/bot-orchestrator/scripts/moa_demo.py', 'skills/bot-orchestrator/scripts/moa_demo_adapter.py',
+                'skills/bot-orchestrator/references/moa.md', 'skills/bot-orchestrator/references/orchestration.md',
+                'examples/moa_demo.py']
     errors = [f'Missing required file: {name}' for name in required if not (root / name).is_file()]
     files = [p for p in root.rglob('*') if p.is_file() and '.git' not in p.parts and '__pycache__' not in p.parts]
     for file in files:
