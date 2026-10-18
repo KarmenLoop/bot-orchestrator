@@ -1,0 +1,15 @@
+Bot Orchestrator
+Copyright (c) 2026 KarmenLoop and contributors
+SPDX-License-Identifier: MIT
+
+This distribution contains the project's original workflow instructions,
+documentation, local task board, tests, and supporting scripts.
+
+The local Python tools use the Python standard library. No third-party Python
+package, model, agent runtime, connector, or desktop driver is vendored in
+this distribution. A host or optional external integration may have its own
+licenses, permissions, usage limits, and service terms.
+
+Names of compatible or illustrative hosts identify those environments only.
+No affiliation, sponsorship, endorsement, or universal host compatibility
+is claimed.

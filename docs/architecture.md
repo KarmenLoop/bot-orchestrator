@@ -1,0 +1,47 @@
+# Architecture
+
+## Responsibilities
+
+The **user** defines the goal, constraints, authority, and relevant preferences.
+
+The **coordinator** retains the goal, chooses actionable work, manages dependencies, receives outputs, and makes evidenced acceptance decisions.
+
+An **executor** performs a bounded task through real host tools. It can be the coordinator itself, an authorized collaborator, or a specific documented tool. The skill does not require multiple agents.
+
+The **host** owns tool availability, account sessions, execution permissions, cancellation interfaces, and optional scheduling. These are never manufactured by the board.
+
+The **board** records the workflow. Its transitions are explicit command invocations and do not cause external work.
+
+The **artifact workspace** holds deliverables and evidence. The board stores references and digests rather than copying their contents into every context.
+
+## Data and transactions
+
+A board has schema version 1, one workspace, a goal and acceptance statement, an overall status, a revision, tasks, events, and optional closure evidence.
+
+The SQLite database contains one board record serialized as JSON. Each mutation begins a local immediate transaction, reads the current record, validates the transition, updates the record, and commits. Invalid transitions leave the prior revision intact. SQLite serializes competing local writes; this is not a distributed coordination system.
+
+Task dependencies may refer only to cards already in the board. Append-only dependency edges therefore cannot introduce a cycle. The current helper does not edit existing dependency lists in place.
+
+## Evidence
+
+Each pinned local file records its relative path, byte count, and SHA-256 digest. Submissions pin deliverables and check records. Acceptance rechecks the submitted revision and pins the review record. Goal closure pins its own user-level acceptance record.
+
+Use versioned deliverables or patches for intermediate stages. If successive tasks repeatedly edit the same pinned file, an earlier reference correctly becomes stale. The final working artifact can be reviewed by a separate integration task.
+
+Files are not immutable simply because they were hashed. `verify` detects later changes when invoked. It does not prove the truth of a log or the correctness of the content, and it cannot make a check and a future filesystem mutation atomic.
+
+## Declared write scopes
+
+The board rejects starts when a running or review task holds a matching or overlapping declared path. A directory scope overlaps its descendants, and `.` overlaps the workspace.
+
+This reduces accidental concurrent writes among cooperating callers. It is not an OS permission boundary, a resource lock for external services, or proof that a caller obeys the declared scope. Real isolation belongs to the host.
+
+## Recovery and invalidation
+
+Task starts, submissions, reviews, waits, and other transitions survive separate process invocations. Reopening accepted work preserves its prior submission and reviews and blocks noncancelled downstream tasks. A closed goal becomes open again.
+
+Actual processes and external operations are separate. Before a resume, inspect their real handles and settle uncertain effects. Do not repeat a message or submission merely because the local board has no success record.
+
+## Limits kept outside the core
+
+Model selection, account management, cross-device sync, agent spawning, timers, notifications, process control, and execution sandboxes remain outside this helper. Integrations should adapt the existing host interface rather than treating the board as a new authority for those capabilities.
