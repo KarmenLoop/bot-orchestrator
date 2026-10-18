@@ -21,6 +21,11 @@ def main():
         print(json.dumps({'ok': False, 'error': 'DESTINATION_EXISTS',
                           'message': 'Inspect or back up the existing directory; it was not changed.'}))
         return 2
+    resolved_target = target.resolve()
+    if resolved_target == source or source in resolved_target.parents:
+        print(json.dumps({'ok': False, 'error': 'DESTINATION_INSIDE_SOURCE',
+                          'message': 'Choose an installation directory outside the source skill directory.'}))
+        return 2
     if not (source / 'SKILL.md').is_file() or not (source / 'LICENSE').is_file():
         print(json.dumps({'ok': False, 'error': 'INCOMPLETE_SOURCE'}))
         return 2

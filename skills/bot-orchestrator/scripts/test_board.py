@@ -2,6 +2,7 @@
 """Behavioral checks; all artifacts stay in isolated temporary directories."""
 import json
 import os
+import sqlite3
 from pathlib import Path
 import subprocess
 import sys
@@ -92,6 +93,121 @@ class BoardTests(unittest.TestCase):
         result = self.call('verify', code=1)
         self.assertEqual(result['issues'][0]['path'], 'a.txt')
 
+    def chain(self):
+        self.add('a'); self.add('b', '--depends', 'a'); self.add('c', '--depends', 'b')
+        self.finish('a'); self.finish('b')
+
+    def test_transitive_stale_dependency_blocks_start_without_consuming_attempt(self):
+        self.chain(); self.save('a.txt', 'changed ancestor')
+        before = self.call('status', '--full')
+        self.call('start', 'c', code=2, error='DEPENDENCY_CHANGED')
+        self.assertEqual(self.call('status', '--full'), before)
+
+    def test_transitive_stale_dependency_blocks_submission(self):
+        self.chain(); self.call('start', 'c')
+        self.save('c.txt'); self.save('check.txt'); self.save('a-review.txt', 'changed review')
+        self.call('submit', 'c', '--evidence', 'check.txt', '--note', 'attempt',
+                  code=2, error='DEPENDENCY_CHANGED')
+        self.assertEqual(self.call('status', '--full')['tasks']['c']['status'], 'running')
+
+    def test_transitive_stale_dependency_blocks_acceptance(self):
+        self.chain(); self.call('start', 'c'); self.save('c.txt'); self.save('check.txt'); self.save('review.txt')
+        self.call('submit', 'c', '--evidence', 'check.txt', '--note', 'submitted')
+        self.save('a.txt', 'changed ancestor')
+        self.call('review', 'c', '--decision', 'accept', '--evidence', 'review.txt', '--reason', 'attempt',
+                  code=2, error='DEPENDENCY_CHANGED')
+        self.assertEqual(self.call('status', '--full')['tasks']['c']['reviews'], [])
+
+    def test_transitive_stale_dependency_blocks_resume(self):
+        self.chain(); self.call('mark', 'c', '--state', 'waiting', '--reason', 'source confirmation')
+        self.save('a.txt', 'changed ancestor')
+        self.call('resume', 'c', '--reason', 'attempt', code=2, error='DEPENDENCY_CHANGED')
+        self.assertEqual(self.call('status', '--full')['tasks']['c']['status'], 'waiting')
+
+    def corrupt(self, value):
+        with sqlite3.connect(str(self.root / 'board.sqlite3')) as conn:
+            conn.execute('UPDATE board SET payload=? WHERE id=1', (json.dumps(value),))
+
+    def payload(self):
+        with sqlite3.connect(str(self.root / 'board.sqlite3')) as conn:
+            return conn.execute('SELECT payload FROM board WHERE id=1').fetchone()[0]
+
+    def test_non_object_state_is_structured_error_and_not_modified(self):
+        self.corrupt([]); before = self.payload()
+        self.call('status', code=2, error='INVALID_BOARD_STATE')
+        self.assertEqual(self.payload(), before)
+
+    def test_boolean_schema_is_not_treated_as_version_one(self):
+        state = self.call('status', '--full'); state['schemaVersion'] = True; self.corrupt(state)
+        self.call('status', code=2, error='UNSUPPORTED_SCHEMA')
+
+    def test_malformed_task_shapes_are_rejected_without_tracebacks(self):
+        self.add('a'); state = self.call('status', '--full')
+        for field, value in [('depends', ['missing']), ('status', 'invented'), ('attempts', True),
+                             ('writes', ['../outside']), ('reviews', None)]:
+            with self.subTest(field=field):
+                modified = json.loads(json.dumps(state)); modified['tasks']['a'][field] = value
+                self.corrupt(modified); before = self.payload()
+                self.call('start', 'a', code=2, error='INVALID_BOARD_STATE')
+                self.assertEqual(self.payload(), before)
+
+    def test_tampered_dependency_cycle_is_rejected(self):
+        self.add('a'); self.add('b', '--depends', 'a')
+        state = self.call('status', '--full'); state['tasks']['a']['depends'] = ['b']; self.corrupt(state)
+        self.call('status', code=2, error='INVALID_BOARD_STATE')
+
+    def test_done_without_accepted_evidence_is_rejected(self):
+        self.add('a'); state = self.call('status', '--full'); state['tasks']['a']['status'] = 'done'; self.corrupt(state)
+        self.call('status', code=2, error='INVALID_BOARD_STATE')
+
+    def test_next_checks_dependencies_conflicts_and_preserves_revision(self):
+        self.add('a', '--write', 'shared'); self.add('b', '--write', 'shared/file')
+        self.add('c', '--depends', 'a'); self.add('d')
+        self.call('start', 'a'); before = self.call('status', '--full')
+        result = self.call('next')
+        self.assertEqual(result['ready'], ['d'])
+        blocked = {x['task']: x['code'] for x in result['blocked']}
+        self.assertEqual(blocked, {'b': 'WRITE_CONFLICT', 'c': 'DEPENDENCY_PENDING'})
+        self.assertEqual(result['inFlight'][0]['task'], 'a')
+        self.assertEqual(self.call('status', '--full'), before)
+
+    def test_next_reports_stale_ancestors_budget_and_due_without_resuming(self):
+        self.chain(); self.save('a.txt', 'stale')
+        self.add('wait'); self.call('mark', 'wait', '--state', 'waiting', '--reason', 'event',
+                                   '--wake-at', '2026-10-20T09:00:00+08:00')
+        self.add('limited', '--max-attempts', '1'); self.call('start', 'limited')
+        self.save('limited.txt'); self.save('check.txt'); self.save('problems.txt')
+        self.call('submit', 'limited', '--evidence', 'check.txt', '--note', 'submitted')
+        self.call('review', 'limited', '--decision', 'rework', '--evidence', 'problems.txt', '--reason', 'Mismatch')
+        before = self.call('status', '--full')
+        result = self.call('next', '--now', '2026-10-20T01:00:00Z')
+        self.assertEqual(result['ready'], [])
+        self.assertEqual({x['task']: x['code'] for x in result['blocked']},
+                         {'c': 'DEPENDENCY_CHANGED', 'limited': 'ATTEMPT_BUDGET'})
+        self.assertTrue(result['waiting'][0]['due'])
+        self.assertTrue(result['evidenceIssues'])
+        self.assertEqual(self.call('status', '--full'), before)
+
+    def test_thousand_task_chain_does_not_exceed_recursion_limit(self):
+        self.add('a'); self.finish('a'); state = self.call('status', '--full')
+        template = state['tasks']['a']; state['tasks'] = {}
+        for index in range(1000):
+            task = json.loads(json.dumps(template)); task['id'] = 'q' + str(index)
+            task['depends'] = ['q' + str(index - 1)] if index else []
+            if index == 999:
+                task.update(status='pending', attempts=0, submission=None, reviews=[])
+            state['tasks'][task['id']] = task
+        self.corrupt(state)
+        self.call('start', 'q999')
+        self.assertEqual(self.call('status', '--full')['tasks']['q999']['status'], 'running')
+
+    def test_next_closed_board_has_no_dispatch_and_recommends_inspection(self):
+        self.add('a'); self.finish('a'); self.save('final.txt')
+        self.call('close', '--evidence', 'final.txt', '--reason', 'Checked')
+        result = self.call('next')
+        self.assertEqual(result['ready'], [])
+        self.assertEqual(result['goalAction'], 'inspect_closed_goal')
+
     def test_reopen_invalidates_transitive_descendants_and_preserves_previous(self):
         self.add('a'); self.add('b', '--depends', 'a'); self.add('c', '--depends', 'b')
         self.finish('a'); self.finish('b'); self.finish('c')
@@ -149,13 +265,18 @@ class BoardTests(unittest.TestCase):
         self.save('final.txt')
         self.call('close', '--evidence', 'final.txt', '--reason', 'Required result checked')
 
-    def test_parent_traversal_and_symlink_escape_rejected(self):
+    def test_parent_traversal_rejected(self):
         self.call('add', 'a', '--objective', 'a', '--check', 'checked', '--deliverable', '../outside.txt',
                   code=2, error='INVALID_PATH')
-        if hasattr(os, 'symlink'):
+
+    @unittest.skipUnless(hasattr(os, 'symlink'), 'Symlink support required')
+    def test_symlink_escape_rejected(self):
+        try:
             (self.root / 'escape').symlink_to(self.root.parent, target_is_directory=True)
-            self.call('add', 'a', '--objective', 'a', '--check', 'checked', '--deliverable', 'escape/outside.txt',
-                      code=2, error='OUTSIDE_WORKSPACE')
+        except OSError as error:
+            self.skipTest('Symlink creation unavailable: ' + str(error))
+        self.call('add', 'a', '--objective', 'a', '--check', 'checked', '--deliverable', 'escape/outside.txt',
+                  code=2, error='OUTSIDE_WORKSPACE')
 
     @unittest.skipUnless(hasattr(os, 'mkfifo'), 'POSIX FIFO check')
     def test_fifo_evidence_is_rejected_without_hanging(self):

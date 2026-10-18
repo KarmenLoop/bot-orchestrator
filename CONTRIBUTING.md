@@ -12,6 +12,7 @@ Clone the repository and use Python 3.9 or newer. No package installation is nee
 
 ```bash
 python3 -B skills/bot-orchestrator/scripts/test_board.py
+python3 -B scripts/test_repository.py
 python3 scripts/check_repository.py
 python3 examples/local_demo.py
 ```

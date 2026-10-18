@@ -10,7 +10,7 @@ python3 examples/local_demo.py
 
 It creates a temporary workspace, generates a fact file containing 17 and 25, verifies the total 42, submits and reviews the facts, generates and reviews a consistent summary, verifies the file references, and closes the goal. It prints the workspace path. It does not use a model, network service, external account, or existing project.
 
-For a standalone skill installation without the repository examples directory, follow the board commands in board.md using your own synthetic inputs. The board remains a record: the host or operator must perform the actual work and checks.
+For a standalone skill installation, run `python3 scripts/demo.py` from the skill directory. It includes the same complete example. Follow the [board commands](board.md) to work with your own synthetic inputs. The board remains a record: the host or operator must perform the actual work and checks.
 
 ## Research with missing information
 

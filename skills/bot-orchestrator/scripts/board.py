@@ -77,13 +77,16 @@ def pin(root, value):
     return {'path': rel, 'bytes': size, 'sha256': digest.hexdigest()}
 
 
-def changed(root, records):
+def changed(root, records, cache=None):
+    cache = {} if cache is None else cache
     result = []
     for record in records:
         try:
-            if pin(root, record['path']) != record:
-                result.append(record['path'])
+            if record['path'] not in cache:
+                cache[record['path']] = pin(root, record['path'])
         except BoardError:
+            cache[record['path']] = None
+        if cache[record['path']] != record:
             result.append(record['path'])
     return result
 
@@ -100,11 +103,31 @@ def task_of(state, key):
     return state['tasks'][key]
 
 
-def dependencies(state, task, root):
-    for dep in task['depends']:
+def dependencies(state, task, root, cache=None):
+    # Iterative traversal also supports chains deeper than Python's call stack.
+    pending, visited = list(reversed(task['depends'])), set()
+    cache = {} if cache is None else cache
+    while pending:
+        dep = pending.pop()
+        if dep in visited:
+            continue
+        visited.add(dep)
         upstream = task_of(state, dep)
-        require(upstream['status'] == 'done', 'DEPENDENCY_PENDING', 'A dependency is not accepted.')
-        require(not changed(root, task_records(upstream)), 'DEPENDENCY_CHANGED', 'An accepted dependency changed.')
+        require(upstream['status'] == 'done', 'DEPENDENCY_PENDING', 'Dependency is not accepted: ' + dep)
+        require(not changed(root, task_records(upstream), cache),
+                'DEPENDENCY_CHANGED', 'Accepted dependency evidence changed: ' + dep)
+        pending.extend(reversed(upstream['depends']))
+
+
+def preflight(state, task, root, cache=None):
+    require(task['status'] == 'pending', 'INVALID_TRANSITION', 'Only pending tasks can start.')
+    dependencies(state, task, root, cache)
+    require(task['attempts'] < task['maxAttempts'], 'ATTEMPT_BUDGET',
+            'Attempt budget exhausted; replan instead of looping.')
+    for other in state['tasks'].values():
+        if other['id'] != task['id'] and other['status'] in ('running', 'review'):
+            require(not any(overlap(a, b) for a in task['writes'] for b in other['writes']),
+                    'WRITE_CONFLICT', 'Overlapping declared write scope held by: ' + other['id'])
 
 
 def overlap(left, right):
@@ -128,16 +151,131 @@ def invalidate(state, key):
     return sorted(affected - {key})
 
 
-def inspect(state, root):
+def inspect(state, root, cache=None):
+    cache = {} if cache is None else cache
     issues = []
     for tid, task in state['tasks'].items():
         if task['status'] == 'cancelled':
             continue
-        for path in changed(root, task_records(task)):
+        for path in changed(root, task_records(task), cache):
             issues.append({'task': tid, 'path': path, 'code': 'EVIDENCE_CHANGED'})
-    for path in changed(root, (state.get('closure') or {}).get('files', [])):
+    for path in changed(root, (state.get('closure') or {}).get('files', []), cache):
         issues.append({'task': None, 'path': path, 'code': 'CLOSURE_CHANGED'})
     return issues
+
+
+def next_actions(state, root, moment):
+    cache = {}
+    issues = inspect(state, root, cache)
+    result = {'goal': state['goal'], 'boardStatus': state['status'], 'revision': state['revision'],
+              'ready': [], 'blocked': [], 'inFlight': [], 'waiting': [], 'evidenceIssues': issues}
+    for tid, task in state['tasks'].items():
+        status = task['status']
+        if status == 'pending' and state['status'] == 'open':
+            try:
+                preflight(state, task, root, cache)
+                result['ready'].append(tid)
+            except BoardError as error:
+                result['blocked'].append({'task': tid, 'code': error.code, 'reason': error.message})
+        elif status in ('running', 'review'):
+            result['inFlight'].append({'task': tid, 'status': status, 'owner': task['owner']})
+        elif status == 'waiting':
+            result['waiting'].append({'task': tid, 'reason': task['reason'], 'wakeAt': task['wakeAt'],
+                                      'due': bool(task['wakeAt'] and timestamp(task['wakeAt']) <= moment)})
+        elif status == 'blocked':
+            result['blocked'].append({'task': tid, 'code': 'TASK_BLOCKED', 'reason': task['reason']})
+    settled = bool(state['tasks']) and all(t['status'] in ('done', 'cancelled') for t in state['tasks'].values())
+    result['goalAction'] = ('inspect_closed_goal' if state['status'] == 'done' else
+                            'inspect_changed_evidence' if issues else
+                            'review_goal_acceptance' if settled else 'continue')
+    result['note'] = 'Read-only snapshot. Start rechecks readiness; reminders do not resume tasks or prove process liveness.'
+    return result
+
+
+def validate_state(state):
+    """Reject malformed current state before any command; never repair it implicitly."""
+    def valid(condition):
+        require(condition, 'INVALID_BOARD_STATE', 'Malformed board state; preserve the database and inspect a backup.')
+
+    def text(value):
+        return isinstance(value, str) and bool(value.strip())
+
+    def path(value):
+        return (text(value) and not PurePosixPath(value).is_absolute() and
+                '..' not in PurePosixPath(value).parts and '\\' not in value and ':' not in value)
+
+    def paths(values):
+        return isinstance(values, list) and bool(values) and all(path(p) for p in values)
+
+    def files(records):
+        valid(isinstance(records, list) and bool(records))
+        for record in records:
+            valid(isinstance(record, dict) and path(record.get('path')) and
+                  type(record.get('bytes')) is int and 0 <= record['bytes'] <= MAX_FILE and
+                  isinstance(record.get('sha256'), str) and
+                  re.fullmatch(r'[0-9a-f]{64}', record['sha256']) is not None)
+
+    def dated(value):
+        valid(text(value))
+        try:
+            timestamp(value)
+        except BoardError:
+            valid(False)
+
+    valid(isinstance(state, dict))
+    require(type(state.get('schemaVersion')) is int and state['schemaVersion'] == 1,
+            'UNSUPPORTED_SCHEMA', 'Unsupported board schema.')
+    valid(text(state.get('workspace')) and Path(state['workspace']).is_absolute())
+    valid(text(state.get('goal')) and text(state.get('acceptance')) and state.get('status') in ('open', 'done'))
+    valid(type(state.get('revision')) is int and state['revision'] >= 1)
+    valid(isinstance(state.get('events'), list) and isinstance(state.get('tasks'), dict) and len(state['tasks']) <= 1000)
+    for key, task in state['tasks'].items():
+        valid(isinstance(task, dict) and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', key) is not None)
+        valid(task.get('id') == key and all(text(task.get(k)) for k in ('objective', 'acceptance', 'owner')))
+        valid(task.get('status') in ('pending', 'running', 'review', 'waiting', 'blocked', 'done', 'cancelled'))
+        valid(paths(task.get('deliverables')) and paths(task.get('writes')))
+        valid(isinstance(task.get('depends'), list) and all(isinstance(d, str) and d in state['tasks'] for d in task['depends']))
+        valid(type(task.get('required')) is bool and type(task.get('maxAttempts')) is int and 1 <= task['maxAttempts'] <= 20)
+        valid(type(task.get('attempts')) is int and 0 <= task['attempts'] <= task['maxAttempts'])
+        valid(isinstance(task.get('reason'), str) and 'wakeAt' in task)
+        if task['wakeAt'] is not None:
+            valid(task['status'] == 'waiting'); dated(task['wakeAt'])
+        valid('submission' in task and isinstance(task.get('reviews'), list) and isinstance(task.get('previous'), list))
+        if task['submission'] is not None:
+            valid(isinstance(task['submission'], dict) and text(task['submission'].get('note')))
+            files(task['submission'].get('files')); dated(task['submission'].get('at'))
+            valid(set(task['deliverables']).issubset({r['path'] for r in task['submission']['files']}))
+        for review in task['reviews']:
+            valid(isinstance(review, dict) and review.get('decision') in ('accept', 'rework') and
+                  text(review.get('reason')) and text(review.get('reviewer')))
+            files(review.get('files')); dated(review.get('at'))
+        if task['status'] in ('review', 'done'):
+            valid(task['submission'] is not None and task['attempts'] > 0)
+        if task['status'] == 'done':
+            valid(bool(task['reviews']) and task['reviews'][-1]['decision'] == 'accept')
+    # Kahn's algorithm detects tampered cycles without recursion or filesystem work.
+    remaining = {key: set(task['depends']) for key, task in state['tasks'].items()}
+    children = {key: [] for key in remaining}
+    for key, parents in remaining.items():
+        for parent in parents:
+            children[parent].append(key)
+    ready = [key for key, parents in remaining.items() if not parents]
+    seen = 0
+    while ready:
+        key = ready.pop(); seen += 1
+        for child in children[key]:
+            remaining[child].remove(key)
+            if not remaining[child]:
+                ready.append(child)
+    valid(seen == len(remaining))
+    valid('closure' in state)
+    if state['closure'] is not None:
+        valid(isinstance(state['closure'], dict) and text(state['closure'].get('reason')))
+        files(state['closure'].get('files')); dated(state['closure'].get('at'))
+    if state['status'] == 'done':
+        required = [t for t in state['tasks'].values() if t['required']]
+        valid(state['closure'] is not None and bool(required) and all(t['status'] == 'done' for t in required))
+        valid(all(t['status'] in ('done', 'cancelled') for t in state['tasks'].values()))
 
 
 def event(state, action, task=None, note=''):
@@ -152,7 +290,10 @@ def execute(state, args):
     for field in ('objective', 'check', 'owner', 'reason', 'note', 'reviewer'):
         if hasattr(args, field):
             require(bool(getattr(args, field).strip()), 'EMPTY_FIELD', 'Required text fields must not be empty.')
-    if command in ('status', 'due', 'verify'):
+    if command in ('status', 'due', 'verify', 'next'):
+        if command == 'next':
+            moment = timestamp(args.now) if args.now else timestamp(now())
+            return next_actions(state, root, moment), 0
         if command == 'verify':
             issues = inspect(state, root)
             return {'ok': not issues, 'issues': issues}, bool(issues)
@@ -202,13 +343,7 @@ def execute(state, args):
         task = task_of(state, args.task)
         status = task['status']
         if command == 'start':
-            require(status == 'pending', 'INVALID_TRANSITION', 'Only pending tasks can start.')
-            dependencies(state, task, root)
-            require(task['attempts'] < task['maxAttempts'], 'ATTEMPT_BUDGET', 'Attempt budget exhausted; replan instead of looping.')
-            for other in state['tasks'].values():
-                if other['id'] != task['id'] and other['status'] in ('running', 'review'):
-                    require(not any(overlap(a, b) for a in task['writes'] for b in other['writes']),
-                            'WRITE_CONFLICT', 'An active task holds an overlapping declared write scope.')
+            preflight(state, task, root)
             task['status'], task['attempts'], task['reason'] = 'running', task['attempts'] + 1, ''
         elif command == 'submit':
             require(status == 'running', 'INVALID_TRANSITION', 'Only running tasks can submit.')
@@ -262,7 +397,8 @@ def parser():
     add.add_argument('--optional', action='store_true')
     sub.add_parser('status').add_argument('--full', action='store_true')
     sub.add_parser('verify')
-    sub.add_parser('due').add_argument('--now', help='ISO offset time; omit to use current UTC.')
+    for command in ('due', 'next'):
+        sub.add_parser(command).add_argument('--now', help='ISO offset time; omit to use current UTC.')
     sub.add_parser('start').add_argument('task')
     submit = sub.add_parser('submit'); submit.add_argument('task')
     submit.add_argument('--evidence', action='append', required=True); submit.add_argument('--note', required=True)
@@ -302,14 +438,14 @@ def run(args):
             conn.execute('INSERT INTO board VALUES(1,?)', (json.dumps(state, ensure_ascii=False),))
         return {'ok': True, 'db': str(db), 'workspace': str(root)}, 0
     require(db.is_file(), 'BOARD_NOT_FOUND', 'Initialize an explicit board first.')
-    readonly = args.command in ('status', 'due', 'verify')
+    readonly = args.command in ('status', 'due', 'verify', 'next')
     with sqlite3.connect(db.as_uri() + ('?mode=ro' if readonly else '?mode=rw'), uri=True, timeout=5) as conn:
         if not readonly:
             conn.execute('BEGIN IMMEDIATE')
         row = conn.execute('SELECT payload FROM board WHERE id=1').fetchone()
         require(row is not None, 'INVALID_DATABASE', 'Board state is missing.')
         state = json.loads(row[0])
-        require(state.get('schemaVersion') == 1, 'UNSUPPORTED_SCHEMA', 'Unsupported board schema.')
+        validate_state(state)
         result, code = execute(state, args)
         if not readonly:
             conn.execute('UPDATE board SET payload=? WHERE id=1', (json.dumps(state, ensure_ascii=False),))

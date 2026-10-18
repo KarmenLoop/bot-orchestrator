@@ -18,15 +18,17 @@ The **artifact workspace** holds deliverables and evidence. The board stores ref
 
 A board has schema version 1, one workspace, a goal and acceptance statement, an overall status, a revision, tasks, events, and optional closure evidence.
 
-The SQLite database contains one board record serialized as JSON. Each mutation begins a local immediate transaction, reads the current record, validates the transition, updates the record, and commits. Invalid transitions leave the prior revision intact. SQLite serializes competing local writes; this is not a distributed coordination system.
+The SQLite database contains one board record serialized as JSON. Each mutation begins a local immediate transaction, reads the current record, validates current-state integrity and the requested transition, updates the record, and commits. Invalid transitions leave the prior revision intact. SQLite serializes competing local writes; this is not a distributed coordination system.
 
-Task dependencies may refer only to cards already in the board. Append-only dependency edges therefore cannot introduce a cycle. The current helper does not edit existing dependency lists in place.
+Task dependencies may refer only to cards already in the board. Append-only dependency edges therefore cannot introduce a cycle. The current helper does not edit existing dependency lists in place. The loader also rejects missing references or cycles introduced by direct database edits. Schema version 1 remains unchanged in release 1.1.0.
 
 ## Evidence
 
 Each pinned local file records its relative path, byte count, and SHA-256 digest. Submissions pin deliverables and check records. Acceptance rechecks the submitted revision and pins the review record. Goal closure pins its own user-level acceptance record.
 
 Use versioned deliverables or patches for intermediate stages. If successive tasks repeatedly edit the same pinned file, an earlier reference correctly becomes stale. The final working artifact can be reviewed by a separate integration task.
+
+Before start, submit, accept, or resume, an iterative traversal rechecks every accepted ancestor, including review evidence. The `next` query uses the same start preflight without a state transition and hashes each referenced path once per inspection. It does not allocate a lease or claim that an execution record is alive.
 
 Files are not immutable simply because they were hashed. `verify` detects later changes when invoked. It does not prove the truth of a log or the correctness of the content, and it cannot make a check and a future filesystem mutation atomic.
 

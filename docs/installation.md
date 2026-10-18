@@ -16,7 +16,7 @@ cd bot-orchestrator
 python3 examples/local_demo.py
 ```
 
-Alternatively, extract a ZIP downloaded through GitHub's Code menu. The demonstration writes to a new temporary directory and prints its location.
+For a standalone release archive, extract it and run `python3 scripts/demo.py` from the skill directory. Alternatively, extract a complete repository ZIP downloaded through GitHub's Code menu. The demonstration writes to a new temporary directory and prints its location.
 
 ## Codex
 
@@ -24,7 +24,7 @@ Alternatively, extract a ZIP downloaded through GitHub's Code menu. The demonstr
 python3 scripts/install_skill.py
 ```
 
-The default location is `$CODEX_HOME/skills/bot-orchestrator`, falling back to `~/.codex/skills/bot-orchestrator` when `CODEX_HOME` is unset. Existing destinations are never overwritten.
+The default location is `$CODEX_HOME/skills/bot-orchestrator`, falling back to `~/.codex/skills/bot-orchestrator` when `CODEX_HOME` is unset. Existing destinations are never overwritten. A destination inside the source skill directory is also rejected before creating directories, preventing recursive self-copy.
 
 An explicit destination is also supported:
 

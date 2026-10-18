@@ -8,13 +8,25 @@ Check that the complete `bot-orchestrator` folder is in the host's documented sk
 
 It intentionally refuses to overwrite user changes. Inspect or back up the existing directory, choose another explicit destination, or remove only the version you intended to replace. Do not delete task workspaces as part of a skill upgrade.
 
+## DESTINATION_INSIDE_SOURCE
+
+Choose a destination outside `skills/bot-orchestrator`, including when the path traverses a symlink. Installing a directory into itself would recursively copy it. The installer rejects this before creating the target.
+
+## INVALID_BOARD_STATE or UNSUPPORTED_SCHEMA
+
+Preserve the database. Check that it belongs to this goal and came from a supported board version. If you have a known-good backup, inspect it separately; do not overwrite the failing evidence or edit task status, digests, or attempt counts to make the command succeed. Version 1.1.0 accepts structurally valid schema version 1 boards and does not perform an automatic migration.
+
+## How to choose a task after an interruption
+
+Run `next` for actionable candidates, wait conditions, and blockers, then inspect the referenced artifacts and real host execution handles. The query does not change the revision. A ready candidate is not reserved; starting another task may change its write-conflict outcome.
+
 ## BOARD_EXISTS
 
 Use the existing board's status command. Initialize a different explicit database only for a different goal. Do not overwrite a board to clear a difficult state.
 
 ## DEPENDENCY_PENDING or DEPENDENCY_CHANGED
 
-A required input is unaccepted or its pinned files changed. Inspect the actual input and relevant review. Restore valid upstream acceptance before resuming its consumers; do not edit stored digests manually.
+A direct or transitive input is unaccepted or its pinned artifact or review files changed. The error identifies the first affected dependency. Inspect the actual input and relevant review. Restore valid upstream acceptance before resuming its consumers; do not edit stored digests manually.
 
 ## WRITE_CONFLICT
 
