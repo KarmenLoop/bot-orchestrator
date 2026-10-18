@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bot Orchestrator"
+  short_description: "Coordinate long tasks with evidence, review, and recovery"
+  default_prompt: "Use $bot-orchestrator to plan and complete my goal, verify actual capabilities, execute within scope, and preserve evidence and a resume point."

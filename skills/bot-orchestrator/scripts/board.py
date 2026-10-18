@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""Local orchestration records. Never executes commands or external actions."""
+import argparse
+import copy
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import sqlite3
+import stat
+import sys
+
+MAX_FILE = 64 * 1024 * 1024
+
+
+class BoardError(Exception):
+    def __init__(self, code, message):
+        self.code, self.message = code, message
+
+
+def require(condition, code, message):
+    if not condition:
+        raise BoardError(code, message)
+
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def timestamp(value):
+    try:
+        result = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        require(result.tzinfo is not None, 'TIMEZONE_REQUIRED', 'Use an ISO time with UTC offset.')
+        return result.astimezone(dt.timezone.utc)
+    except (ValueError, AttributeError):
+        raise BoardError('INVALID_TIME', 'Use an ISO time with UTC offset.')
+
+
+def relative(root, value):
+    p = PurePosixPath(value)
+    require(bool(value) and not p.is_absolute() and '..' not in p.parts
+            and '\\' not in value and ':' not in value,
+            'INVALID_PATH', 'Use a workspace-relative path without parent traversal.')
+    target = (root / value).resolve()
+    require(target == root or root in target.parents, 'OUTSIDE_WORKSPACE', 'Path leaves the workspace.')
+    return target.relative_to(root).as_posix()
+
+
+def pin(root, value):
+    # Resolve at use time as well as declaration time; do not follow a new escape.
+    rel = relative(root, value)
+    file = root / rel
+    require(not (root / value).is_symlink(), 'SYMLINK_EVIDENCE', 'Evidence must be a regular file.')
+    try:
+        flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_BINARY', 0)
+        with os.fdopen(os.open(file, flags), 'rb') as stream:
+            before = os.fstat(stream.fileno())
+            require(stat.S_ISREG(before.st_mode) and before.st_size <= MAX_FILE,
+                    'INVALID_EVIDENCE', 'Evidence must be a regular file no larger than 64 MiB.')
+            digest, size = hashlib.sha256(), 0
+            while True:
+                part = stream.read(1024 * 1024)
+                if not part:
+                    break
+                size += len(part)
+                require(size <= MAX_FILE, 'INVALID_EVIDENCE', 'Evidence exceeded 64 MiB.')
+                digest.update(part)
+            after = os.fstat(stream.fileno())
+        require((before.st_ino, before.st_size, before.st_mtime_ns) ==
+                (after.st_ino, after.st_size, after.st_mtime_ns),
+                'EVIDENCE_CHANGED', 'File changed while reading it.')
+    except OSError:
+        raise BoardError('EVIDENCE_UNREADABLE', 'Evidence file is missing or unreadable.')
+    return {'path': rel, 'bytes': size, 'sha256': digest.hexdigest()}
+
+
+def changed(root, records):
+    result = []
+    for record in records:
+        try:
+            if pin(root, record['path']) != record:
+                result.append(record['path'])
+        except BoardError:
+            result.append(record['path'])
+    return result
+
+
+def task_records(task):
+    records = list((task.get('submission') or {}).get('files', []))
+    if task.get('reviews') and task['reviews'][-1]['decision'] == 'accept':
+        records += task['reviews'][-1]['files']
+    return records
+
+
+def task_of(state, key):
+    require(key in state['tasks'], 'TASK_NOT_FOUND', 'Task does not exist.')
+    return state['tasks'][key]
+
+
+def dependencies(state, task, root):
+    for dep in task['depends']:
+        upstream = task_of(state, dep)
+        require(upstream['status'] == 'done', 'DEPENDENCY_PENDING', 'A dependency is not accepted.')
+        require(not changed(root, task_records(upstream)), 'DEPENDENCY_CHANGED', 'An accepted dependency changed.')
+
+
+def overlap(left, right):
+    return left == '.' or right == '.' or left == right or left.startswith(right + '/') or right.startswith(left + '/')
+
+
+def invalidate(state, key):
+    affected = {key}
+    while True:
+        extra = {tid for tid, task in state['tasks'].items()
+                 if tid not in affected and set(task['depends']) & affected}
+        if not extra:
+            break
+        affected.update(extra)
+    for tid in affected - {key}:
+        task = state['tasks'][tid]
+        if task['status'] != 'cancelled':
+            task['status'] = 'blocked'
+            task['reason'] = 'Upstream task changed: ' + key
+            task['wakeAt'] = None
+    return sorted(affected - {key})
+
+
+def inspect(state, root):
+    issues = []
+    for tid, task in state['tasks'].items():
+        if task['status'] == 'cancelled':
+            continue
+        for path in changed(root, task_records(task)):
+            issues.append({'task': tid, 'path': path, 'code': 'EVIDENCE_CHANGED'})
+    for path in changed(root, (state.get('closure') or {}).get('files', [])):
+        issues.append({'task': None, 'path': path, 'code': 'CLOSURE_CHANGED'})
+    return issues
+
+
+def event(state, action, task=None, note=''):
+    state['revision'] += 1
+    state['events'].append({'revision': state['revision'], 'at': now(),
+                            'action': action, 'task': task, 'note': note})
+
+
+def execute(state, args):
+    root = Path(state['workspace'])
+    command = args.command
+    for field in ('objective', 'check', 'owner', 'reason', 'note', 'reviewer'):
+        if hasattr(args, field):
+            require(bool(getattr(args, field).strip()), 'EMPTY_FIELD', 'Required text fields must not be empty.')
+    if command in ('status', 'due', 'verify'):
+        if command == 'verify':
+            issues = inspect(state, root)
+            return {'ok': not issues, 'issues': issues}, bool(issues)
+        if command == 'due':
+            moment = timestamp(args.now) if args.now else timestamp(now())
+            return {'due': [tid for tid, task in state['tasks'].items()
+                            if task['status'] == 'waiting' and task.get('wakeAt')
+                            and timestamp(task['wakeAt']) <= moment],
+                    'note': 'Due is a reminder to inspect the condition; no scheduler or automatic resume.'}, 0
+        if args.full:
+            return state, 0
+        return {'goal': state['goal'], 'acceptance': state['acceptance'],
+                'status': state['status'], 'revision': state['revision'],
+                'tasks': [{k: t[k] for k in ('id', 'objective', 'status', 'owner', 'depends', 'attempts', 'reason', 'wakeAt')}
+                          for t in state['tasks'].values()],
+                'readyByDependency': [tid for tid, t in state['tasks'].items() if t['status'] == 'pending'
+                                      and all(state['tasks'][d]['status'] == 'done' for d in t['depends'])]}, 0
+
+    require(state['status'] == 'open' or command == 'reopen', 'BOARD_CLOSED', 'Reopen an accepted task before changing a closed board.')
+    task = None
+    if command == 'add':
+        require(re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', args.task) is not None,
+                'INVALID_TASK_ID', 'Task id must be 1-64 letters, numbers, underscores or hyphens.')
+        require(args.task not in state['tasks'], 'TASK_EXISTS', 'Task already exists.')
+        require(len(state['tasks']) < 1000, 'TASK_LIMIT', 'Use a separate board for additional tasks.')
+        require(1 <= args.max_attempts <= 20, 'INVALID_BUDGET', 'max-attempts must be between 1 and 20.')
+        # Dependencies must already exist. Append-only edges make cycles impossible.
+        require(all(dep in state['tasks'] for dep in args.depends), 'UNKNOWN_DEPENDENCY', 'Add dependencies before dependants.')
+        deliverables = list(dict.fromkeys(relative(root, p) for p in args.deliverable))
+        writes = list(dict.fromkeys(relative(root, p) for p in (args.write or args.deliverable)))
+        task = {'id': args.task, 'objective': args.objective, 'acceptance': args.check,
+                'deliverables': deliverables, 'writes': writes, 'depends': list(dict.fromkeys(args.depends)),
+                'owner': args.owner, 'required': not args.optional, 'status': 'pending',
+                'attempts': 0, 'maxAttempts': args.max_attempts, 'reason': '', 'wakeAt': None,
+                'submission': None, 'reviews': [], 'previous': []}
+        state['tasks'][args.task] = task
+    elif command == 'close':
+        required = [t for t in state['tasks'].values() if t['required']]
+        require(required and all(t['status'] == 'done' for t in required),
+                'REQUIRED_WORK_OPEN', 'Every required task must be accepted; cancellation does not satisfy it.')
+        require(all(t['status'] in ('done', 'cancelled') for t in state['tasks'].values()),
+                'WORK_ACTIVE', 'Close or cancel optional work before closing the board.')
+        require(not inspect(state, root), 'EVIDENCE_CHANGED', 'Evidence changed; review it again.')
+        state['closure'] = {'files': [pin(root, p) for p in args.evidence], 'reason': args.reason, 'at': now()}
+        state['status'] = 'done'
+    else:
+        task = task_of(state, args.task)
+        status = task['status']
+        if command == 'start':
+            require(status == 'pending', 'INVALID_TRANSITION', 'Only pending tasks can start.')
+            dependencies(state, task, root)
+            require(task['attempts'] < task['maxAttempts'], 'ATTEMPT_BUDGET', 'Attempt budget exhausted; replan instead of looping.')
+            for other in state['tasks'].values():
+                if other['id'] != task['id'] and other['status'] in ('running', 'review'):
+                    require(not any(overlap(a, b) for a in task['writes'] for b in other['writes']),
+                            'WRITE_CONFLICT', 'An active task holds an overlapping declared write scope.')
+            task['status'], task['attempts'], task['reason'] = 'running', task['attempts'] + 1, ''
+        elif command == 'submit':
+            require(status == 'running', 'INVALID_TRANSITION', 'Only running tasks can submit.')
+            dependencies(state, task, root)
+            files = list(dict.fromkeys(task['deliverables'] + args.evidence))
+            task['submission'] = {'files': [pin(root, p) for p in files], 'note': args.note, 'at': now()}
+            task['status'] = 'review'
+        elif command == 'review':
+            require(status == 'review', 'INVALID_TRANSITION', 'Only submitted tasks can be reviewed.')
+            files = [pin(root, p) for p in args.evidence]
+            if args.decision == 'accept':
+                dependencies(state, task, root)
+                require(not changed(root, task['submission']['files']), 'EVIDENCE_CHANGED', 'Submitted files changed before acceptance.')
+            review = {'decision': args.decision, 'reviewer': args.reviewer,
+                      'reason': args.reason, 'files': files, 'at': now()}
+            task['reviews'].append(review)
+            task['status'] = 'done' if args.decision == 'accept' else 'pending'
+            task['reason'] = args.reason
+        elif command == 'mark':
+            require(status not in ('done', 'cancelled'), 'INVALID_TRANSITION', 'Reopen accepted work; cancelled work needs explicit resume.')
+            require(args.state == 'waiting' or not args.wake_at, 'INVALID_WAKE', 'wake-at only applies to waiting.')
+            task['status'], task['reason'] = args.state, args.reason
+            task['wakeAt'] = timestamp(args.wake_at).isoformat() if args.wake_at else None
+            if args.state == 'cancelled':
+                invalidate(state, task['id'])
+        elif command == 'resume':
+            require(status in ('waiting', 'blocked', 'cancelled'), 'INVALID_TRANSITION', 'Task is not waiting, blocked or cancelled.')
+            dependencies(state, task, root)
+            task['status'], task['reason'], task['wakeAt'] = 'pending', args.reason, None
+        elif command == 'reopen':
+            require(status == 'done', 'INVALID_TRANSITION', 'Only accepted tasks can be reopened.')
+            task['previous'].append({'submission': copy.deepcopy(task['submission']), 'reviews': copy.deepcopy(task['reviews'])})
+            task['submission'], task['reviews'] = None, []
+            task['status'], task['reason'] = 'pending', args.reason
+            invalidate(state, task['id'])
+            state['status'], state['closure'] = 'open', None
+    event(state, command, task['id'] if task else None, getattr(args, 'reason', '') or getattr(args, 'note', ''))
+    return {'ok': True, 'revision': state['revision'], 'task': task, 'status': state['status']}, 0
+
+
+def parser():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--db', required=True, help='Explicit path to this goal\'s SQLite board.')
+    sub = p.add_subparsers(dest='command', required=True)
+    init = sub.add_parser('init'); init.add_argument('--workspace', required=True)
+    init.add_argument('--goal', required=True); init.add_argument('--acceptance', required=True)
+    add = sub.add_parser('add'); add.add_argument('task'); add.add_argument('--objective', required=True)
+    add.add_argument('--check', required=True); add.add_argument('--deliverable', action='append', required=True)
+    add.add_argument('--depends', action='append', default=[]); add.add_argument('--write', action='append', default=[])
+    add.add_argument('--owner', default='current-agent'); add.add_argument('--max-attempts', type=int, default=3)
+    add.add_argument('--optional', action='store_true')
+    sub.add_parser('status').add_argument('--full', action='store_true')
+    sub.add_parser('verify')
+    sub.add_parser('due').add_argument('--now', help='ISO offset time; omit to use current UTC.')
+    sub.add_parser('start').add_argument('task')
+    submit = sub.add_parser('submit'); submit.add_argument('task')
+    submit.add_argument('--evidence', action='append', required=True); submit.add_argument('--note', required=True)
+    review = sub.add_parser('review'); review.add_argument('task')
+    review.add_argument('--decision', choices=('accept', 'rework'), required=True)
+    review.add_argument('--evidence', action='append', required=True); review.add_argument('--reason', required=True)
+    review.add_argument('--reviewer', default='self')
+    mark = sub.add_parser('mark'); mark.add_argument('task')
+    mark.add_argument('--state', choices=('waiting', 'blocked', 'cancelled'), required=True)
+    mark.add_argument('--reason', required=True); mark.add_argument('--wake-at')
+    for command in ('resume', 'reopen'):
+        item = sub.add_parser(command); item.add_argument('task'); item.add_argument('--reason', required=True)
+    close = sub.add_parser('close'); close.add_argument('--evidence', action='append', required=True)
+    close.add_argument('--reason', required=True)
+    return p
+
+
+def run(args):
+    db = Path(args.db).expanduser().absolute()
+    require(not db.is_symlink(), 'INVALID_DATABASE', 'Database must not be a symlink.')
+    if args.command == 'init':
+        root = Path(args.workspace).expanduser().resolve()
+        require(root.is_dir(), 'INVALID_WORKSPACE', 'Workspace must already exist.')
+        require(args.goal.strip() and args.acceptance.strip(), 'EMPTY_GOAL', 'Goal and acceptance must not be empty.')
+        db.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(db, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(fd)
+        except FileExistsError:
+            raise BoardError('BOARD_EXISTS', 'Existing board is never overwritten by init.')
+        state = {'schemaVersion': 1, 'workspace': str(root), 'goal': args.goal,
+                 'acceptance': args.acceptance, 'status': 'open', 'revision': 0,
+                 'tasks': {}, 'events': [], 'closure': None}
+        event(state, 'init')
+        with sqlite3.connect(str(db), timeout=5) as conn:
+            conn.execute('CREATE TABLE board (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)')
+            conn.execute('INSERT INTO board VALUES(1,?)', (json.dumps(state, ensure_ascii=False),))
+        return {'ok': True, 'db': str(db), 'workspace': str(root)}, 0
+    require(db.is_file(), 'BOARD_NOT_FOUND', 'Initialize an explicit board first.')
+    readonly = args.command in ('status', 'due', 'verify')
+    with sqlite3.connect(db.as_uri() + ('?mode=ro' if readonly else '?mode=rw'), uri=True, timeout=5) as conn:
+        if not readonly:
+            conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT payload FROM board WHERE id=1').fetchone()
+        require(row is not None, 'INVALID_DATABASE', 'Board state is missing.')
+        state = json.loads(row[0])
+        require(state.get('schemaVersion') == 1, 'UNSUPPORTED_SCHEMA', 'Unsupported board schema.')
+        result, code = execute(state, args)
+        if not readonly:
+            conn.execute('UPDATE board SET payload=? WHERE id=1', (json.dumps(state, ensure_ascii=False),))
+    return result, code
+
+
+def main():
+    try:
+        result, code = run(parser().parse_args())
+    except BoardError as error:
+        result, code = {'ok': False, 'error': {'code': error.code, 'message': error.message}}, 2
+    except (OSError, sqlite3.Error, ValueError, KeyError, TypeError):
+        result, code = {'ok': False, 'error': {'code': 'BOARD_IO_OR_FORMAT', 'message': 'Board I/O or format error; no successful transition confirmed.'}}, 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return code
+
+
+if __name__ == '__main__':
+    sys.exit(main())
