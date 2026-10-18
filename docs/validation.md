@@ -6,6 +6,7 @@ From the repository root:
 
 ```bash
 python3 -B skills/bot-orchestrator/scripts/test_board.py
+python3 -B scripts/test_repository.py
 python3 scripts/check_repository.py
 python3 examples/local_demo.py
 ```
@@ -20,7 +21,11 @@ The board suite covers:
 - Refusal to start before a dependency is accepted.
 - Atomic rejection of unknown dependencies and missing deliverables.
 - Separation of submission from acceptance.
-- Detection of changed submitted and accepted files.
+- Detection of changed submitted and accepted files, including transitive ancestor artifacts and review records.
+- Rejection at start, submit, accept, and resume when an accepted ancestor becomes stale.
+- A 1,000-task chain without recursive graph traversal.
+- Structured rejection of malformed current state, invalid schema types, missing references, and dependency cycles.
+- Read-only next-action reports with evidence, conflict, budget, wait, and closed-goal behavior.
 - Transitive invalidation and preserved history after reopening work.
 - Two separate processes competing for overlapping declared write scopes.
 - Timezone-aware due reminders that do not automatically resume work.
@@ -31,11 +36,23 @@ The board suite covers:
 - Rejection of FIFO evidence without hanging on POSIX.
 - Persistence across command processes and refusal to overwrite an existing board.
 
-## Observed baseline
+## Observed release checks
 
-The original helper baseline was run locally on macOS with Python 3.9.6: **16 tests passed**, no failures. The initial documented local demonstration completed successfully, and the skill entry point passed its format validator.
+Version 1.1.0 was checked locally on macOS with Python 3.9.6:
 
-The English publication package is rechecked before publishing. Its exact command output and artifact summary are retained in the release preparation record; do not convert that local evidence into a claim about a remote CI run.
+| Check | Observed result |
+| --- | --- |
+| Board behavioral suite | 30 tests passed, no failures or skips. |
+| Repository-tool suite | 6 tests passed, no failures or skips. |
+| Repository content checker | Required files, links, English text, version consistency, and Python 3.9 syntax passed. |
+| Repository demonstration | Actual files, checks, reviews, verification, and goal closure completed. |
+| Standalone skill demonstration | Completed using only a copied skill directory, exercised by the repository-tool suite. |
+| Legacy board compatibility | A board created and accepted by the published v1.0.0 helper was read, verified, and closed by v1.1.0. Read-only queries preserved its payload. |
+| Skill entry-point format | Passed the available skill format validator. |
+
+The repository-tool suite exercises successful installation, overwrite refusal, direct and symlink-resolved self-copy refusal, missing publication files, invalid publication content, and the standalone demonstration.
+
+The initial 1.0.0 baseline had 16 board tests. These counts describe actual local runs. They do not represent GitHub CI, independent review, or acceptance on another platform. Release preparation retains the exact local command output outside the public source tree.
 
 ## Not verified by those checks
 

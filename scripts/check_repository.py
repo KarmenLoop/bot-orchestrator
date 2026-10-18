@@ -14,7 +14,8 @@ def main():
     required = ['README.md', 'LICENSE', 'NOTICE', 'VERSION', 'CONTRIBUTING.md',
                 'SECURITY.md', 'SUPPORT.md', 'CODE_OF_CONDUCT.md', 'CHANGELOG.md',
                 'skills/bot-orchestrator/SKILL.md', 'skills/bot-orchestrator/LICENSE',
-                'skills/bot-orchestrator/agents/openai.yaml', 'examples/local_demo.py']
+                'skills/bot-orchestrator/agents/openai.yaml', 'examples/local_demo.py',
+                'skills/bot-orchestrator/scripts/demo.py', 'scripts/test_repository.py']
     errors = [f'Missing required file: {name}' for name in required if not (root / name).is_file()]
     files = [p for p in root.rglob('*') if p.is_file() and '.git' not in p.parts and '__pycache__' not in p.parts]
     for file in files:
@@ -40,12 +41,15 @@ def main():
                 relative = target.split('#', 1)[0]
                 if relative and not (file.parent / relative).resolve().is_file():
                     errors.append(f'Broken local link: {file.relative_to(root)} -> {target}')
-    entry = (skill / 'SKILL.md').read_text(encoding='utf-8')
-    if not entry.startswith('---\n') or 'name: bot-orchestrator\n' not in entry.split('---', 2)[1]:
-        errors.append('Skill identity/frontmatter missing')
-    if 'version: "' + (root / 'VERSION').read_text().strip() + '"' not in entry:
-        errors.append('Skill and repository versions differ')
-    if (root / 'LICENSE').read_bytes() != (skill / 'LICENSE').read_bytes():
+    entry_file, version_file = skill / 'SKILL.md', root / 'VERSION'
+    if entry_file.is_file():
+        entry = entry_file.read_text(encoding='utf-8')
+        if not entry.startswith('---\n') or 'name: bot-orchestrator\n' not in entry.split('---', 2)[1]:
+            errors.append('Skill identity/frontmatter missing')
+        if version_file.is_file() and 'version: "' + version_file.read_text().strip() + '"' not in entry:
+            errors.append('Skill and repository versions differ')
+    root_license, skill_license = root / 'LICENSE', skill / 'LICENSE'
+    if root_license.is_file() and skill_license.is_file() and root_license.read_bytes() != skill_license.read_bytes():
         errors.append('Standalone skill license differs from repository license')
     print(json.dumps({'ok': not errors, 'filesChecked': len(files), 'errors': errors}, indent=2))
     return 1 if errors else 0

@@ -51,8 +51,11 @@ Use the full workflow when those distinctions matter. For a straightforward requ
 | Write coordination | Reject overlapping declared write scopes while another task is running or awaiting review. |
 | Deliverable review | Separate submission from acceptance and require actual local files for evidence. |
 | Evidence tracking | Pin workspace-relative paths, byte counts, and SHA-256 digests; detect missing or changed files. |
+| Next-action diagnosis | Inspect ready tasks, blockers, stale evidence, in-flight records, and due waits without changing state. |
 | Recovery | Preserve state across separate process invocations and retain previous accepted submissions when work is reopened. |
+| Dependency validation | Recheck the entire accepted ancestor chain before starting, submitting, accepting, or resuming downstream work. |
 | Dependency invalidation | Block downstream tasks when an accepted upstream task is reopened. |
+| State integrity | Reject malformed current records and cyclic dependencies with structured errors, preserving the stored payload. |
 | Bounded attempts | Count execution starts and enforce a configurable per-task attempt limit. |
 | Waiting and cancellation | Record reasons, timezone-aware reminder times, and explicit resume transitions. |
 | Goal closure | Require accepted mandatory work, settled optional work, and unchanged evidence before closure. |
@@ -72,7 +75,7 @@ git clone https://github.com/KarmenLoop/bot-orchestrator.git
 cd bot-orchestrator
 ```
 
-You can download the standalone skill package from [Releases](https://github.com/KarmenLoop/bot-orchestrator/releases/latest), or use GitHub's **Code → Download ZIP** option for the complete repository. Extract the archive before running the examples. The standalone archive includes the skill, references, helper, tests, metadata, and license; the repository also includes the installer, local demonstration, and project documentation.
+You can download the standalone skill package from [Releases](https://github.com/KarmenLoop/bot-orchestrator/releases/latest), or use GitHub's **Code → Download ZIP** option for the complete repository. Extract the archive before running the examples. The standalone archive includes the skill, references, helper, runnable demonstration, tests, metadata, and license; the repository also includes the installer and project documentation.
 
 **Requirement:** Python 3.9 or newer. The board, installer, local example, and repository checks use only the Python standard library. No API key, package installation, or model subscription is needed for the local demonstration.
 
@@ -83,6 +86,8 @@ On systems where Python is named `python` rather than `python3`, use that execut
 ```bash
 python3 examples/local_demo.py
 ```
+
+For the standalone archive, run `python3 scripts/demo.py` from its extracted skill directory.
 
 The example creates its own temporary workspace and completes a two-task dependency chain:
 
@@ -144,8 +149,10 @@ Inspect it:
 ```bash
 python3 skills/bot-orchestrator/scripts/board.py \
   --db /absolute/path/to/job/board.sqlite3 \
-  status
+  next
 ```
+
+The report lists ready tasks, the first blocker for each blocked candidate, in-flight records, waits, and stale evidence. It does not consume attempts or reserve tasks. Use `status --full` for the stored record and `verify` for a nonzero exit when evidence changed.
 
 All normal command results are JSON. Exit codes are `0` for success, `1` when `verify` detects changed evidence, and `2` for invalid input, lifecycle violations, conflicts, or I/O/format errors.
 
@@ -214,6 +221,7 @@ See the [worked scenarios](skills/bot-orchestrator/references/examples.md) and r
 
 ```bash
 python3 -B skills/bot-orchestrator/scripts/test_board.py
+python3 -B scripts/test_repository.py
 python3 scripts/check_repository.py
 python3 examples/local_demo.py
 ```

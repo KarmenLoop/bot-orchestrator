@@ -50,3 +50,40 @@ The board's reopen operation returns an accepted task to pending and blocks nonc
 Record the last observation, failure class, changed condition, duplicate-effect risk, and remaining budget before a retry. Unchanged inputs and unchanged conditions do not justify an unlimited loop.
 
 A pause stops new dispatch. A resume continues the existing goal rather than creating a duplicate. A cancellation retains already-created artifacts and external effects, with truthful cleanup results; deleting them requires the relevant scope.
+
+## Compact handoff with a real next action
+
+A checkpoint should let another session act without rereading every message. Keep the task contract in a workspace document and reference it from the board's goal or task notes. The board does not have separate authorization, process-handle, or scheduler fields; those facts belong in this checkpoint and the host's actual records.
+
+```text
+Goal: Deliver output/report-v2.md with checked source-linked figures.
+Contract: goal-contract.md; latest user correction recorded under Decision 4.
+Board: board.sqlite3, revision 14; report is waiting, facts is accepted.
+Accepted input: output/facts-v2.json; digest recorded in the facts submission.
+Actual execution: No live executor; last export finished and was read back.
+Wait: Source B must confirm its revised total; no scheduled wake-up exists.
+Unknown effects: None observed. No external report has been sent.
+Next: Inspect Source B's reply, compare its figures to facts-v2.json, and
+      reopen facts if the accepted values changed. Otherwise resume report.
+Verify: Recompute each reported total and retain the comparison result.
+```
+
+Use real values from the current task. Do not copy the example's completion statements into a live checkpoint. Keep any actual source or operation identifier available through its authorized retrieval path.
+
+When context becomes constrained, checkpoint before loading another large result. Load the contract, current next-action report, relevant source slices, and the one task's evidence. Summarization must preserve failed checks and the latest correction; it must not convert an unknown effect into a failure or a successful effect.
+
+## Recovery decision table
+
+| Observation after inspection | Concrete next action |
+| --- | --- |
+| Pending work appears ready | Check its card and input versions, then start it; the transition rechecks conflicts and budget. |
+| A running record has a live host handle | Reattach through the documented interface; do not start a duplicate executor. |
+| A running record has no reliable handle | Inspect artifacts and operation receipts. Record a blocker while the outcome remains unknown. |
+| A review record has unchanged artifacts | Perform the actual acceptance checks and retain a review file; do not start it again. |
+| A waiting timestamp is due | Check the missing condition; resume only when it is actually satisfied. |
+| An accepted ancestor's file or review changed | Settle affected real executors, reopen that accepted task, and review the new version before resuming descendants. |
+| The attempt budget is exhausted | Preserve the failure and explain what changed in the plan. Do not reset counters or clone a task solely to obtain retries. |
+| Current state is malformed | Preserve the database and inspect a known-good copy; do not initialize over it or silently repair success history. |
+| The board is closed | Verify evidence and the user's current intent; reopen only the accepted work that requires a new revision. |
+
+A readiness report checks local workflow conditions. The coordinator must still verify actual permission, input meaning, external resources, and user-level acceptance.

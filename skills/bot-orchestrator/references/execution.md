@@ -56,3 +56,25 @@ An instruction to make everything more rigorous is not enough. Expand verificati
 Honor explicit user budgets and deadlines. When the requested outcome will not fit, preserve completed work and show the concrete remaining gap or smaller viable deliverable. Do not silently overspend.
 
 When no budget is given, inexpensive inspection can establish the work needed. Do not introduce paid providers, subscriptions, or long cloud runs merely to orchestrate. Use actual visible usage and pricing for cost reports; label estimates and their basis rather than inventing exact costs.
+
+## Size a task for the next handoff
+
+Split at an observable output or a meaningful authority boundary, not at every tool call. A task that only says "investigate" needs a concrete deliverable, such as a source-linked cause table with one reproducible failure. A task that bundles investigation, implementation, deployment, and external notification may need separate acceptance and authority checks.
+
+Before dispatch, send only:
+
+1. The intended output and its exact destination or resource.
+2. The relevant input references and accepted versions.
+3. The acceptance check and evidence expected back.
+4. The write scope, protected work, and actual stopping condition.
+5. The available budget and the condition that requires escalation.
+
+The executor should return facts and artifacts rather than an expanded transcript. Retain enough raw output at a retrievable location to support the result. If it cannot complete the card, require the observed failure, partial artifact, and one concrete missing condition.
+
+## Integrate results without losing disagreements
+
+Check that each submission used the same accepted interface and input revision. If two outputs conflict, locate the conflicting claim or interface, determine which evidence resolves it, and return a precise rework request. Do not average incompatible facts or treat the most confident executor as the authority.
+
+Use one integration owner for shared output. Review the integrated artifact against the user's acceptance conditions, including interactions that individually passing parts do not exercise. An accepted extraction plus an accepted draft does not prove that the final export or destination is correct.
+
+If a new user correction changes the contract, record it before more dispatch. Reuse unaffected work, invalidate affected consumers, and explain any resulting budget or delivery change. A new instruction should not silently erase a prior failure or authorize an unrelated external action.
