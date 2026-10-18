@@ -164,7 +164,8 @@ def inspect(state, root, cache=None):
     return issues
 
 
-def next_actions(state, root, moment):
+def next_actions(state, root, moment, limit=2):
+    require(type(limit) is int and 1 <= limit <= 16, 'INVALID_LIMIT', 'Batch limit must be between 1 and 16.')
     cache = {}
     issues = inspect(state, root, cache)
     result = {'goal': state['goal'], 'boardStatus': state['status'], 'revision': state['revision'],
@@ -184,6 +185,28 @@ def next_actions(state, root, moment):
                                       'due': bool(task['wakeAt'] and timestamp(task['wakeAt']) <= moment)})
         elif status == 'blocked':
             result['blocked'].append({'task': tid, 'code': 'TASK_BLOCKED', 'reason': task['reason']})
+    children = {tid: [] for tid in state['tasks']}
+    for tid, task in state['tasks'].items():
+        for dep in task['depends']:
+            children[dep].append(tid)
+    scores = {}
+    for tid in result['ready']:
+        pending, consumers = [tid], set()
+        while pending:
+            key = pending.pop()
+            if key not in consumers:
+                consumers.add(key); pending.extend(children[key])
+        scores[tid] = sum(state['tasks'][key]['required'] and state['tasks'][key]['status'] != 'done' for key in consumers)
+    result['rankedReady'] = sorted(result['ready'], key=lambda tid: -scores[tid])
+    result['requiredWorkReachable'] = scores
+    result['recommendedBatch'] = []
+    selected_writes = []
+    for tid in result['rankedReady']:
+        writes = state['tasks'][tid]['writes']
+        if not any(overlap(a, b) for a in writes for b in selected_writes):
+            result['recommendedBatch'].append(tid); selected_writes.extend(writes)
+            if len(result['recommendedBatch']) == limit:
+                break
     settled = bool(state['tasks']) and all(t['status'] in ('done', 'cancelled') for t in state['tasks'].values())
     result['goalAction'] = ('inspect_closed_goal' if state['status'] == 'done' else
                             'inspect_changed_evidence' if issues else
@@ -293,7 +316,7 @@ def execute(state, args):
     if command in ('status', 'due', 'verify', 'next'):
         if command == 'next':
             moment = timestamp(args.now) if args.now else timestamp(now())
-            return next_actions(state, root, moment), 0
+            return next_actions(state, root, moment, args.limit), 0
         if command == 'verify':
             issues = inspect(state, root)
             return {'ok': not issues, 'issues': issues}, bool(issues)
@@ -398,7 +421,10 @@ def parser():
     sub.add_parser('status').add_argument('--full', action='store_true')
     sub.add_parser('verify')
     for command in ('due', 'next'):
-        sub.add_parser(command).add_argument('--now', help='ISO offset time; omit to use current UTC.')
+        query = sub.add_parser(command)
+        query.add_argument('--now', help='ISO offset time; omit to use current UTC.')
+        if command == 'next':
+            query.add_argument('--limit', type=int, default=2, help='Advisory disjoint batch size, 1-16.')
     sub.add_parser('start').add_argument('task')
     submit = sub.add_parser('submit'); submit.add_argument('task')
     submit.add_argument('--evidence', action='append', required=True); submit.add_argument('--note', required=True)

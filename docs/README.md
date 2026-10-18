@@ -12,6 +12,8 @@ Bot Orchestrator combines an agent-facing workflow skill with a local, non-execu
 ## Working guides
 
 - [Architecture](architecture.md): coordinator, host, board, artifacts, and lifecycle.
+- [Orchestration decisions](../skills/bot-orchestrator/references/orchestration.md): pattern selection, feasibility, prioritization, and delivery gates.
+- [MOA](../skills/bot-orchestrator/references/moa.md): command protocol, cross-review, refinement, repeated checks, and rechecking.
 - [Execution](../skills/bot-orchestrator/references/execution.md): task cards, ownership, dependencies, collaboration, and review.
 - [Capabilities](../skills/bot-orchestrator/references/capabilities.md): real tools, external actions, and scheduling boundaries.
 - [Recovery](../skills/bot-orchestrator/references/recovery.md): checkpoints, uncertain effects, invalidation, pause, and resume.

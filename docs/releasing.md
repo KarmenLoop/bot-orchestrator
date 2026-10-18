@@ -6,7 +6,7 @@ This is a maintainer checklist, not evidence that a release already exists.
 
 1. Choose the version in `VERSION` and the skill's frontmatter metadata.
 2. Update `CHANGELOG.md` with actual behavior and compatibility changes.
-3. Run the board tests, repository-tool tests, repository checker, and both repository and standalone demonstrations. Validate the skill entry format with the host tooling when available.
+3. Run the board, MOA, and repository-tool tests, repository checker, both offline examples, and standalone archive demonstrations. Use `scripts/validate.py --repeat 3 --output` with a new evidence directory outside the repository to preserve repeated checks against one source fingerprint. Validate the skill entry format with the host tooling when available.
 4. Inspect the exact files to publish. Exclude task databases, generated workspaces, credentials, local paths, and private evidence.
 5. Keep root and standalone-skill license files identical.
 

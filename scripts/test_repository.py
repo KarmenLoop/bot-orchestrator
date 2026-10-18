@@ -87,6 +87,19 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(value['goalStatus'], 'done')
         self.assertTrue((Path(value['workspace']) / 'summary.md').is_file())
 
+    def test_standalone_moa_demo_repairs_rechecks_and_audits(self):
+        skill = Path(self.temp.name) / 'standalone-moa'
+        shutil.copytree(self.root / 'skills/bot-orchestrator', skill)
+        result = subprocess.run([sys.executable, '-B', str(skill / 'scripts/moa_demo.py'),
+                                 '--amounts', '4', '-7', '100', '--runs', '3'],
+                                capture_output=True, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        value = json.loads(result.stdout); self.addCleanup(shutil.rmtree, value['workspace'])
+        self.assertEqual(value['total'], 97)
+        self.assertEqual(value['roundResults'], [False, True])
+        self.assertEqual(value['recheckCalls'], 3)
+        self.assertEqual(value['modelCalls'], 0)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

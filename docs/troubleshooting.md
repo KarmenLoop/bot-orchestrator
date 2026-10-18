@@ -48,6 +48,18 @@ That is expected. `due` is a query. The helper does not schedule execution. Insp
 
 Inspect the host's real execution handle. The board is a persistent record, not a process supervisor. Record the actual wait, blocker, cancellation, or submission after inspecting it.
 
+## MOA spec or adapter failure
+
+Use `moa.py inspect` to check commands, source files, criterion coverage, and maximum calls before execution. Examine the failing call's request/stdout/stderr and actual exit code in `result.json`. The driver expects one UTF-8 JSON object on stdout; diagnostic prose belongs on stderr.
+
+`PROPOSAL_QUORUM` means too few valid proposals. `CRITIQUE_EXECUTION` and `VERIFICATION_EXECUTION` mean a required stage failed to execute correctly; they are not successful business checks. `ACCEPTANCE_FAILED` retains the actual negative check results. `NO_PROGRESS` means the same failed candidate digest returned again; inspect the repair rather than resetting history.
+
+For `INPUT_CHANGED` or `EVIDENCE_CHANGED`, preserve the run and establish the actual input/candidate revision. For `ADAPTER_TIMEOUT`, `RUN_DEADLINE`, or `CLEANUP_UNKNOWN`, inspect real execution and any remote receipt before retrying. Use a new directory for every run or recheck.
+
+## MOA passed locally, but the wider task is incomplete
+
+The MOA result covers its declared candidate and checks. Verify the intended final artifact, integration, destination, and user acceptance before reviewing or closing the wider goal. The offline demo validates deterministic local process adapters and makes no model calls.
+
 ## An external request timed out
 
 Query the original operation or idempotency receipt before repeating an effect. If no reliable confirmation exists, preserve the uncertain result and explain it. A local state transition cannot determine whether a remote message or submission happened.

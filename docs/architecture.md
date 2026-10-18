@@ -12,6 +12,8 @@ The **host** owns tool availability, account sessions, execution permissions, ca
 
 The **board** records the workflow. Its transitions are explicit command invocations and do not cause external work.
 
+The optional **MOA driver** executes declared command adapters through proposal, critique, synthesis, and repeated-verification stages. It pins inputs and stage evidence, bounds concurrency and rounds, and checkpoints actual execution receipts. It is separate from the record-only board.
+
 The **artifact workspace** holds deliverables and evidence. The board stores references and digests rather than copying their contents into every context.
 
 ## Data and transactions
@@ -44,6 +46,14 @@ Task starts, submissions, reviews, waits, and other transitions survive separate
 
 Actual processes and external operations are separate. Before a resume, inspect their real handles and settle uncertain effects. Do not repeat a message or submission merely because the local board has no success record.
 
+## MOA refinement and evidence
+
+Each accepted MOA candidate must pass every declared verifier for all configured repetitions on its exact digest. Failed candidate digests cannot be retried in another refinement round without a changed version. Declared critic failures stop synthesis; proposal failures are tolerable only under an explicit reduced quorum and are reported as degradation.
+
+`recheck` audits an accepted source run and executes only its verifiers in a new directory, retaining the candidate hash and source-result reference. `audit` executes no commands and checks hashes plus accepted-stage identities, JSON receipts, criterion coverage, and repeated-check completeness. Local record owners can still forge a complete history; these records are not authenticated attestation.
+
+The board's next-action report additionally ranks candidates by reachable unfinished required work and chooses an advisory batch with disjoint declared writes. It acquires no lease and does not estimate durations or override host/user decisions.
+
 ## Limits kept outside the core
 
-Model selection, account management, cross-device sync, agent spawning, timers, notifications, process control, and execution sandboxes remain outside this helper. Integrations should adapt the existing host interface rather than treating the board as a new authority for those capabilities.
+Model selection, account management, cross-device sync, host-agent spawning, timers, notifications, remote process control, and execution sandboxes remain outside these helpers. The MOA driver only supervises commands it directly starts. Integrations should adapt the existing host interface rather than treating the board as a new authority for those capabilities.

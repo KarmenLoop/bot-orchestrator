@@ -6,9 +6,12 @@ From the repository root:
 
 ```bash
 python3 -B skills/bot-orchestrator/scripts/test_board.py
+python3 -B skills/bot-orchestrator/scripts/test_moa.py
 python3 -B scripts/test_repository.py
 python3 scripts/check_repository.py
 python3 examples/local_demo.py
+python3 examples/moa_demo.py
+python3 scripts/validate.py --repeat 3 --output /absolute/path/to/new-validation-directory
 ```
 
 No external account, model request, browser session, or package installation is needed for these commands.
@@ -36,7 +39,27 @@ The board suite covers:
 - Rejection of FIFO evidence without hanging on POSIX.
 - Persistence across command processes and refusal to overwrite an existing board.
 
-## Observed release checks
+## MOA and repeated-validation coverage
+
+The version 1.2.0 acceptance set contains **32 board tests, 30 MOA tests, and 7 repository-tool tests**. The MOA suite executes actual local subprocesses and covers:
+
+- Proposal, cross-review, synthesis, declared criterion coverage, and repeated checks on the same candidate.
+- A failed first synthesis repaired from actual feedback, with every failed observation retained.
+- Exhausted rounds, flaky repetitions, and unchanged failed candidates stopping with `NO_PROGRESS`.
+- Proposal quorum, explicit degraded operation, and failed critics blocking synthesis.
+- Non-JSON responses, missing checks, nonzero exits, bounded streams, timeouts, and POSIX owned-descendant termination.
+- Changed source inputs or candidates blocking acceptance and later audits.
+- Verifier-only rechecking, immutable candidate digests, and stale-source refusal before new execution.
+- Accepted-status edits, missing repeat receipts, and outside-run candidate references being rejected.
+- Real calculations with different source values, queued adapter calls, and non-overwriting evidence directories.
+
+The board tests additionally cover required-work ranking and advisory disjoint batches without changing the board revision. The repository tests execute both demonstrations using only copied standalone skill files.
+
+`validate.py` runs the complete acceptance set, content checks, and both demonstrations for every requested cycle. Each raw log and exit code is retained in the new output directory. It stops at the first failed check, records unfinished work honestly, and verifies that the source fingerprint did not change during the campaign. `report.json` is the authoritative local run record. Published release notes distinguish observed campaigns from this reproducible test specification.
+
+The offline MOA adapters are deterministic local programs. Their model call count is zero. They establish callable process routing and validation behavior, without establishing external model quality or native host-agent integration.
+
+## Previous observed baseline
 
 Version 1.1.0 was checked locally on macOS with Python 3.9.6:
 

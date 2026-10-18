@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.9 or newer for the optional board, installer, tests, and local example.
+- Python 3.9 or newer for the optional board, MOA command driver, installer, tests, and offline examples.
 - A host that can load the skill's Markdown instructions for agent-guided use.
 - The host's actual tools and permissions for the work you intend to perform.
 
@@ -14,6 +14,7 @@ No model key or network service is needed to run the local example. The Python t
 git clone https://github.com/KarmenLoop/bot-orchestrator.git
 cd bot-orchestrator
 python3 examples/local_demo.py
+python3 examples/moa_demo.py
 ```
 
 For a standalone release archive, extract it and run `python3 scripts/demo.py` from the skill directory. Alternatively, extract a complete repository ZIP downloaded through GitHub's Code menu. The demonstration writes to a new temporary directory and prints its location.
@@ -39,6 +40,10 @@ Restart the host session or refresh its skill discovery according to its documen
 Copy the entire `skills/bot-orchestrator` directory, including its references, scripts, metadata, and license, to the host's documented skill location. Do not copy only `SKILL.md` and leave its references behind.
 
 Import formats and invocation syntax differ. If a host cannot load companion files, adapt the package through that host's documented process and validate the actual result. Native import into a particular bot product is not claimed solely from this package's structure.
+
+## MOA adapters
+
+The offline MOA example runs with no account or model service. For actual agent/model backends, use a documented host interface or provide synchronous command adapters using the [MOA protocol](../skills/bot-orchestrator/references/moa.md). Run `inspect` before executing a new spec. The runner inherits host permissions; it does not install providers, authenticate accounts, or sandbox adapter code.
 
 ## Upgrade
 

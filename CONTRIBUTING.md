@@ -12,9 +12,12 @@ Clone the repository and use Python 3.9 or newer. No package installation is nee
 
 ```bash
 python3 -B skills/bot-orchestrator/scripts/test_board.py
+python3 -B skills/bot-orchestrator/scripts/test_moa.py
 python3 -B scripts/test_repository.py
 python3 scripts/check_repository.py
 python3 examples/local_demo.py
+python3 examples/moa_demo.py
+python3 scripts/validate.py --repeat 3 --output /absolute/path/to/new-validation-directory
 ```
 
 Keep public documentation, example data, comments, and UI metadata in English.
@@ -30,7 +33,7 @@ Keep changes focused on one observable problem or capability. Explain:
 
 Behavior changes should include a meaningful regression case. Test real observable behavior rather than matching the implementation's wording. Preserve failure cases and do not weaken assertions to make a change pass.
 
-Changes to the board must keep submission separate from acceptance, preserve atomic state transitions, reject unsupported schemas, and retain honest evidence semantics. New side effects, schedulers, account authorities, or model clients do not belong in the core board.
+Changes to the board must keep submission separate from acceptance, preserve atomic state transitions, reject unsupported schemas, and retain honest evidence semantics. Execution behavior belongs only in the opt-in command driver; preserve its bounded protocol, immutable candidate evidence, full verifier coverage, and failure history. Schedulers, account authorities, and model clients do not belong in the core board.
 
 ## Skill changes
 

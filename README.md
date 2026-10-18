@@ -19,12 +19,13 @@ Bot Orchestrator turns a broad request into a sequence of accountable, reviewabl
 
 It is designed for the gap between a useful conversation and a finished task: a report that still needs source checks, a change that still needs verification, a workflow waiting for input, or several contributors whose outputs must fit together.
 
-The repository contains two complementary parts:
+The repository contains three complementary parts:
 
 - **An agent skill:** original instructions for goal intake, execution planning, coordination, review, recovery, and delivery.
 - **A local task board:** a Python command-line helper that persists tasks and evidence in SQLite and enforces a small, explicit lifecycle.
+- **An optional MOA command driver:** an opt-in executable that calls declared proposal, critique, synthesis, and verifier adapters, preserving bounded rounds and repeated-check evidence.
 
-The skill guides an agent. The board records and validates local state. Neither component creates model access, credentials, background workers, or permission to act on an external account.
+The skill guides an agent. The board records and validates local state. The MOA driver executes only explicitly invoked, declared command adapters. Model connections, account sessions, background services, and permission to act remain with the host or caller.
 
 ## Why use it?
 
@@ -47,11 +48,14 @@ Use the full workflow when those distinctions matter. For a straightforward requ
 | --- | --- |
 | Goal intake | Record the intended result, acceptance criteria, scope, constraints, and current progress. |
 | Task decomposition | Create independently reviewable deliverables with explicit dependencies and owners. |
+| Feasibility and routing | Choose direct execution, dependency tasks, MOA, review, or waiting from the actual acceptance and available tools. |
+| Callable MOA | Run proposal, cross-review, synthesis, and verification command adapters under explicit limits. |
+| Repeated verification | Require every configured check repetition on one candidate; retain failures and recheck accepted versions without regenerating answers. |
 | Conditional collaboration | Coordinate available, authorized workers; fall back to one agent when delegation is unavailable or prohibited. |
 | Write coordination | Reject overlapping declared write scopes while another task is running or awaiting review. |
 | Deliverable review | Separate submission from acceptance and require actual local files for evidence. |
 | Evidence tracking | Pin workspace-relative paths, byte counts, and SHA-256 digests; detect missing or changed files. |
-| Next-action diagnosis | Inspect ready tasks, blockers, stale evidence, in-flight records, and due waits without changing state. |
+| Next-action diagnosis | Inspect ready tasks, blockers, stale evidence, in-flight records, and due waits; rank reachable required work and suggest a disjoint batch. |
 | Recovery | Preserve state across separate process invocations and retain previous accepted submissions when work is reopened. |
 | Dependency validation | Recheck the entire accepted ancestor chain before starting, submitting, accepting, or resuming downstream work. |
 | Dependency invalidation | Block downstream tasks when an accepted upstream task is reopened. |
@@ -62,7 +66,7 @@ Use the full workflow when those distinctions matter. For a straightforward requ
 
 ## What it does not provide
 
-This release is **not** a desktop application, a hosted agent service, a model gateway, an operating-system sandbox, or a background scheduler. The board never executes commands, sends messages, starts agents, or cancels real processes.
+This release is **not** a desktop application, a hosted agent service, a model gateway, an operating-system sandbox, or a background scheduler. The board remains record-only. The separate MOA `run` and `recheck` commands execute the declared adapters and stop their owned local execution resources. They provide cooperative process orchestration, without OS isolation or a hosted model backend.
 
 External tools remain the responsibility of the host. A skill can instruct a host to use an available connector, but it cannot make that connector exist or manufacture an authorization grant. See [capabilities and limitations](docs/limitations.md).
 
@@ -99,7 +103,20 @@ The example creates its own temporary workspace and completes a two-task depende
 
 It prints the workspace path so you can inspect the actual artifacts and SQLite board. It does not contact a model, publish anything, or modify an existing project.
 
-### 3. Install the skill in Codex
+### 3. Try MOA with real local processes
+
+```bash
+python3 examples/moa_demo.py
+python3 examples/moa_demo.py --amounts 4 -7 100 --runs 3
+```
+
+For the standalone archive, use `python3 scripts/moa_demo.py` from its skill directory.
+
+The offline example computes from actual input files, cross-checks proposals, rejects an intentionally wrong first synthesis, repairs it from feedback, and repeats verification on the corrected candidate. It then performs a separate three-run recheck without calling proposal or synthesis adapters again. All requests, outputs, actual exit codes, candidate digests, and failed observations remain in the printed workspace.
+
+The example explicitly reports **zero model calls**. To connect actual agents or models, use the host's authorized collaboration tools or supply synchronous command adapters through the documented [MOA protocol](skills/bot-orchestrator/references/moa.md). Local process tests establish the invocation and acceptance mechanism; they do not establish model answer quality.
+
+### 4. Install the skill in Codex
 
 ```bash
 python3 scripts/install_skill.py
@@ -152,6 +169,8 @@ python3 skills/bot-orchestrator/scripts/board.py \
   next
 ```
 
+Add `--limit 3` to request an advisory batch of up to three disjoint candidates. Ranking counts reachable unfinished required work; user urgency, external resources, and actual cost remain coordinator decisions.
+
 The report lists ready tasks, the first blocker for each blocked candidate, in-flight records, waits, and stale evidence. It does not consume attempts or reserve tasks. Use `status --full` for the stored record and `verify` for a nonzero exit when evidence changed.
 
 All normal command results are JSON. Exit codes are `0` for success, `1` when `verify` detects changed evidence, and `2` for invalid input, lifecycle violations, conflicts, or I/O/format errors.
@@ -196,6 +215,8 @@ Start with the [documentation index](docs/README.md).
 | --- | --- |
 | Install, update, and remove | [Installation](docs/installation.md) |
 | Workflow responsibilities and storage | [Architecture](docs/architecture.md) |
+| Pattern selection and feasibility | [Orchestration decisions](skills/bot-orchestrator/references/orchestration.md) |
+| Callable MOA and rechecking | [MOA reference](skills/bot-orchestrator/references/moa.md) |
 | Task cards and collaboration | [Execution reference](skills/bot-orchestrator/references/execution.md) |
 | Host tools and external actions | [Capabilities reference](skills/bot-orchestrator/references/capabilities.md) |
 | State and interruption recovery | [Recovery reference](skills/bot-orchestrator/references/recovery.md) |
@@ -221,10 +242,15 @@ See the [worked scenarios](skills/bot-orchestrator/references/examples.md) and r
 
 ```bash
 python3 -B skills/bot-orchestrator/scripts/test_board.py
+python3 -B skills/bot-orchestrator/scripts/test_moa.py
 python3 -B scripts/test_repository.py
 python3 scripts/check_repository.py
 python3 examples/local_demo.py
+python3 examples/moa_demo.py
+python3 scripts/validate.py --repeat 3 --output /absolute/path/to/new-validation-directory
 ```
+
+The repeated validator preserves each exit code and raw log, stops on a failed check, and verifies that source files remained unchanged. Its output directory must be new and outside the repository.
 
 The tests exercise real local files, SQLite transactions, separate processes, evidence changes, dependency rules, and lifecycle transitions. The repository checker validates Python syntax, documentation links, required files, English-only publication text, and portable examples.
 
@@ -234,7 +260,7 @@ Current local results and platform boundaries are recorded in [validation](docs/
 
 Bug reports, focused fixes, clearer examples, and verified host compatibility reports are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-Keep the core small. A new integration should show the tool contract, its authorization boundary, a real failure case, and an executable verification path. Avoid adding provider-specific account setup or a second task execution engine to the local board.
+Keep the core small. A new integration should show the tool contract, its authorization boundary, a real failure case, and an executable verification path. Avoid adding provider-specific account setup or execution behavior to the record-only board. Keep executable MOA behavior in its separate opt-in driver.
 
 ## Security
 
