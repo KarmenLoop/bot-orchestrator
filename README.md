@@ -1,8 +1,6 @@
 # Bot Orchestrator
 
-**A practical orchestration skill for long-running agent work.**
-
-Plan, decompose, execute, review, recover, and deliver—with explicit ownership and verifiable results.
+Bot Orchestrator helps an agent keep track of a job that takes more than one sitting. It includes a task board, review steps, and a record of what finished, what failed, and what still needs attention.
 
 Maintained by [KarmenLoop](https://github.com/KarmenLoop).
 
@@ -15,32 +13,23 @@ Maintained by [KarmenLoop](https://github.com/KarmenLoop).
 
 ## Overview
 
-Bot Orchestrator turns a broad request into a sequence of accountable, reviewable actions. One coordinator keeps the user's goal intact, identifies dependencies, assigns bounded work when collaboration is available, checks the actual deliverables, and preserves enough state to continue after an interruption.
+Use it when a task has dependencies, several contributors, or a pause that needs to survive the conversation. One coordinator keeps the goal and constraints in view, assigns work when other agents are available and authorized, and checks the files that come back.
 
-It is designed for the gap between a useful conversation and a finished task: a report that still needs source checks, a change that still needs verification, a workflow waiting for input, or several contributors whose outputs must fit together.
+The package has three parts:
 
-The repository contains three complementary parts:
+- An agent skill with instructions for planning, review, and recovery.
+- A Python task board that stores tasks and file records in SQLite.
+- An optional MoA driver that runs the proposal, review, synthesis, and verification commands you register.
 
-- **An agent skill:** original instructions for goal intake, execution planning, coordination, review, recovery, and delivery.
-- **A local task board:** a Python command-line helper that persists tasks and evidence in SQLite and enforces a small, explicit lifecycle.
-- **An optional MOA command driver:** an opt-in executable that calls declared proposal, critique, synthesis, and verifier adapters, preserving bounded rounds and repeated-check evidence.
-
-The skill guides an agent. The board records and validates local state. The MOA driver executes only explicitly invoked, declared command adapters. Model connections, account sessions, background services, and permission to act remain with the host or caller.
+Your agent host supplies models, account access, and permission to act. The board records task state; it does not start a background worker or schedule a wake-up.
 
 ## Why use it?
 
-A long conversation is a weak task ledger. Important constraints disappear, a worker's status is mistaken for a verified result, and a retry can repeat an action that already happened.
+A conversation can say a task is done while the file is still missing. A retry can also repeat an action that already happened.
 
-Bot Orchestrator makes these distinctions explicit:
+The board keeps submissions separate from accepted results and ties acceptance to a particular file version. A task marked as running is a record of a start, not proof that its process is still alive. Waiting records describe when work should be checked again; the host must arrange the actual wake-up.
 
-- A plan is a proposed sequence of work.
-- A running task is an execution record, not proof that a process is alive.
-- A submission is a deliverable awaiting review.
-- Acceptance applies to a particular artifact version.
-- A waiting time is a reminder condition, not a scheduled job.
-- A completed goal requires goal-level evidence, not just a collection of closed subtasks.
-
-Use the full workflow when those distinctions matter. For a straightforward request that can be completed immediately, the skill explicitly permits direct execution without a task board or extra roles.
+Use the full workflow when those records matter. A small task can be handled directly, without setting up a board or extra roles.
 
 ## Capabilities
 
