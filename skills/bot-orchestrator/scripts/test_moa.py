@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 """MOA behavior with actual subprocess adapters, files, and failure injection."""
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -7,6 +8,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
+
+import moa
 
 SCRIPT = Path(__file__).with_name('moa.py')
 ADAPTER = Path(__file__).with_name('moa_demo_adapter.py')
@@ -129,6 +133,46 @@ class MoaTests(unittest.TestCase):
         self.assertEqual(failed['error']['code'], 'OUTPUT_LIMIT')
         stdout = self.root / 'run' / failed['stdout']
         self.assertLessEqual(stdout.stat().st_size, 256 * 1024)
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX process groups only')
+    def test_cleanup_signal_error_preserves_output_limit_and_records_uncertainty(self):
+        workspace = self.root.resolve()
+        spec = moa.validate_spec(self.spec, workspace)
+        adapter = dict(spec['proposers'][0], argv=[sys.executable, str(ADAPTER), 'flood'])
+        engine = moa.Engine(spec, workspace, workspace / 'signal-error', moa.source_inputs(spec, workspace))
+
+        async def invoke():
+            engine.semaphore = asyncio.Semaphore(1)
+            with mock.patch.object(moa.os, 'killpg', side_effect=PermissionError('synthetic signal denial')):
+                return await engine.invoke(adapter, engine.request('propose', adapter, 1, []))
+
+        record = asyncio.run(invoke())
+        self.assertFalse(record['ok'])
+        self.assertEqual(record['error']['code'], 'OUTPUT_LIMIT')
+        self.assertEqual(record['cleanupError']['code'], 'CLEANUP_SIGNAL')
+        self.assertIsNotNone(record['returnCode'])
+        self.assertLessEqual((engine.root / record['stdout']).stat().st_size, 256 * 1024)
+        saved = json.loads((engine.root / 'result.json').read_text())
+        self.assertEqual(saved['calls'][0]['cleanupError']['code'], 'CLEANUP_SIGNAL')
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX process groups only')
+    def test_cleanup_signal_error_cannot_accept_a_valid_response(self):
+        workspace = self.root.resolve()
+        spec = moa.validate_spec(self.spec, workspace)
+        engine = moa.Engine(spec, workspace, workspace / 'valid-signal-error', moa.source_inputs(spec, workspace))
+        adapter = spec['proposers'][0]
+
+        async def invoke():
+            engine.semaphore = asyncio.Semaphore(1)
+            with mock.patch.object(moa.os, 'killpg', side_effect=PermissionError('synthetic signal denial')):
+                return await engine.invoke(adapter, engine.request('propose', adapter, 1, []))
+
+        record = asyncio.run(invoke())
+        self.assertFalse(record['ok'])
+        self.assertIsNotNone(record['response'])
+        self.assertEqual(record['error']['code'], 'CLEANUP_UNKNOWN')
+        self.assertEqual(record['cleanupError']['code'], 'CLEANUP_SIGNAL')
+        self.assertEqual(record['returnCode'], 0)
 
     def test_verifier_cannot_omit_a_required_check(self):
         self.spec['verifiers'][0]['argv'][-1] = 'missing-check'; self.run_moa(code=1)

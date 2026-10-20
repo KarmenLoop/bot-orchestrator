@@ -326,6 +326,21 @@ class Engine:
                             process.kill()
                     except ProcessLookupError:
                         pass
+                    except OSError:
+                        # A signal denial must not erase the adapter failure or its evidence.
+                        # Group cleanup is uncertain, so even a valid response cannot pass.
+                        record['ok'] = False
+                        record['cleanupError'] = {'code': 'CLEANUP_SIGNAL',
+                                                  'message': 'Could not stop the owned process group; inspect execution before retrying.'}
+                        if record['error'] is None:
+                            record['error'] = {'code': 'CLEANUP_UNKNOWN', 'message': record['cleanupError']['message']}
+                        if process.returncode is None:
+                            try:
+                                process.kill()
+                            except ProcessLookupError:
+                                pass
+                            except OSError:
+                                pass  # The recorded cleanup uncertainty remains fail-closed.
                     for task in tasks:
                         if not task.done():
                             task.cancel()
