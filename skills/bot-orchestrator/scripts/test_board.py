@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 import subprocess
 import sys
@@ -125,11 +126,11 @@ class BoardTests(unittest.TestCase):
         self.assertEqual(self.call('status', '--full')['tasks']['c']['status'], 'waiting')
 
     def corrupt(self, value):
-        with sqlite3.connect(str(self.root / 'board.sqlite3')) as conn:
+        with closing(sqlite3.connect(str(self.root / 'board.sqlite3'))) as conn, conn:
             conn.execute('UPDATE board SET payload=? WHERE id=1', (json.dumps(value),))
 
     def payload(self):
-        with sqlite3.connect(str(self.root / 'board.sqlite3')) as conn:
+        with closing(sqlite3.connect(str(self.root / 'board.sqlite3'))) as conn, conn:
             return conn.execute('SELECT payload FROM board WHERE id=1').fetchone()[0]
 
     def test_non_object_state_is_structured_error_and_not_modified(self):
