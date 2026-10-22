@@ -20,7 +20,7 @@ python3 examples/moa_demo.py
 python3 scripts/validate.py --repeat 3 --output /absolute/path/to/new-validation-directory
 ```
 
-Keep public documentation, example data, comments, and UI metadata in English.
+Keep English and Simplified Chinese README and tutorial counterparts aligned. Use English for code, example data, comments, UI metadata, and concrete commit messages.
 
 ## Pull requests
 
@@ -48,3 +48,7 @@ Contributions are accepted under this repository's MIT License. Submit only mate
 ## Conduct
 
 Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Discuss observable behavior and proposed fixes respectfully.
+
+## Documentation and release changes
+
+Keep the English and Simplified Chinese entry pages and guides aligned. Explain the reader’s actual task with project-specific examples. Use concrete English commit subjects. New ordinary filenames and versioned release assets use lowercase kebab-case without spaces; conventional README, LICENSE, SKILL and metadata names remain unchanged. Before release, compare each package, version label, command, and current image with the documented behavior. Label diagrams, synthetic data, historical evidence, and unverified integrations accurately.

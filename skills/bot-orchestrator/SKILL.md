@@ -3,7 +3,7 @@ name: bot-orchestrator
 description: Orchestrate multi-step agent work that needs dependency planning, MOA collaboration, tool coordination, repeated verification, waiting, or recovery. Keep one goal moving toward verifiable results through a single agent or authorized collaborators. Not intended for simple questions.
 license: MIT
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # Bot Orchestrator

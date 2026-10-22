@@ -1,0 +1,13 @@
+{
+  "version": "1.2.1",
+  "documents": [
+    "README.md",
+    "README.zh-CN.md",
+    "docs/tutorial.en.md",
+    "docs/tutorial.zh-CN.md"
+  ],
+  "media_files": {
+    "docs/images/local-demo-v1.2.1.svg": "bc718747a65be76f8f2eda23e61fb7f11bee34d610da65924ed8c59eaa81dddd"
+  },
+  "source_files": {}
+}

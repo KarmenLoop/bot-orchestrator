@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 — 2026-10-23
+
+- Add bilingual onboarding to repository and standalone copies.
+- Bind local example imagery and release documentation to the current version.
+- Keep translated Markdown while retaining publication checks for code, paths, and links.
+
 ## 1.2.0 — 2026-10-19
 
 - Add explicit orchestration decisions for feasibility, pattern selection, required-work prioritization, integration, and final delivery.

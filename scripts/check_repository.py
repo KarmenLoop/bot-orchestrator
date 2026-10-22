@@ -23,11 +23,11 @@ def main():
     errors = [f'Missing required file: {name}' for name in required if not (root / name).is_file()]
     files = [p for p in root.rglob('*') if p.is_file() and '.git' not in p.parts and '__pycache__' not in p.parts]
     for file in files:
-        if file.suffix not in ('.md', '.py', '.yaml', '.yml', '.txt') and file.name not in ('LICENSE', 'NOTICE', 'VERSION', '.gitignore'):
+        if file.suffix not in ('.md', '.py', '.yaml', '.yml', '.txt', '.json', '.svg') and file.name not in ('LICENSE', 'NOTICE', 'VERSION', '.gitignore', '.gitattributes'):
             errors.append(f'Unexpected publication file: {file.relative_to(root)}')
             continue
         content = file.read_text(encoding='utf-8')
-        if re.search(r'[\u3400-\u9fff]', content):
+        if file.suffix not in ('.md', '.svg') and re.search(r'[\u3400-\u9fff]', content):
             errors.append(f'Non-English publication text: {file.relative_to(root)}')
         if re.search(r'/(?:Users|home)/[A-Za-z0-9._-]+/|[A-Z]:\\Users\\', content):
             errors.append(f'Machine-specific user path: {file.relative_to(root)}')
