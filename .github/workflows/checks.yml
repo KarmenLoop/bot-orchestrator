@@ -27,3 +27,4 @@ jobs:
       - run: python -B scripts/check_repository.py
       - run: python -B examples/local_demo.py
       - run: python -B examples/moa_demo.py
+      - run: python -B scripts/check_publication.py

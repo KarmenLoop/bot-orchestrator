@@ -70,7 +70,8 @@ class RepositoryTests(unittest.TestCase):
         self.assertTrue(any('VERSION' in e for e in value['errors']))
 
     def test_checker_detects_non_english_text_and_broken_links(self):
-        (self.root / 'bad.md').write_text(chr(0x4e2d) + '\n[missing](absent.md)', encoding='utf-8')
+        (self.root / 'bad.md').write_text('[missing](absent.md)', encoding='utf-8')
+        (self.root / 'bad.txt').write_text(chr(0x4e2d) + '\n[missing](absent.md)', encoding='utf-8')
         result, value = self.call('check_repository.py')
         self.assertEqual(result.returncode, 1, value)
         self.assertTrue(any('Non-English' in e for e in value['errors']))
